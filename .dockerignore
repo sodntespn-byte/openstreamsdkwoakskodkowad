@@ -1,0 +1,12 @@
+node_modules
+.next
+.git
+.turbo
+.cache
+coverage
+*.log
+.env.local
+.cursor
+.claude
+dist
+out
