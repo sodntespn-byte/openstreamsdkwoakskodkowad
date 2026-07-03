@@ -1,6 +1,6 @@
 {
-  "name": "Superflix",
-  "short_name": "Superflix",
+  "name": "OpenStream",
+  "short_name": "OpenStream",
   "description": "Assista aos melhores filmes, séries e animes em HD",
   "start_url": "/",
   "display": "standalone",

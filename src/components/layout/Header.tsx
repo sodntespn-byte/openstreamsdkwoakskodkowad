@@ -9,7 +9,9 @@ import { cn } from '@/lib/utils';
 import { Search, User, LogOut, Settings, ChevronDown, Film, Tv, Loader2 } from 'lucide-react';
 import { ClearCacheButton } from '@/components/ui/ClearCacheButton';
 import { OpenStreamLogo } from '@/components/branding/OpenStreamLogo';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 import { tmdb } from '@/services/tmdb';
+import { FEATURES } from '@/lib/features';
 
 interface SearchSuggestion {
   id: number;
@@ -39,7 +41,7 @@ export function Header() {
 
   const navLinks = [
     {
-      href: '/',
+      href: user ? '/' : '/welcome',
       label: 'Início',
       active: pathname === '/' || pathname === '/welcome',
     },
@@ -48,6 +50,9 @@ export function Header() {
     { href: '/anime', label: 'Animes', active: pathname === '/anime' || pathname.startsWith('/anime/') },
     { href: '/tv', label: 'TV ao Vivo', active: pathname === '/tv' },
     { href: '/calendario', label: 'Calendário', active: pathname === '/calendario' },
+    ...(FEATURES.hyperbeam
+      ? [{ href: '/sala', label: 'PC virtual', active: pathname === '/sala' }]
+      : []),
   ];
 
   useEffect(() => {
@@ -194,7 +199,7 @@ export function Header() {
       >
         <div className="max-w-[1800px] mx-auto flex min-h-[var(--header-height)] items-center justify-between pl-[calc(1rem+var(--safe-left))] pr-[calc(1rem+var(--safe-right))] md:pl-[calc(3rem+var(--safe-left))] md:pr-[calc(3rem+var(--safe-right))]">
           {/* Logo */}
-          <OpenStreamLogo href={user ? '/' : '/'} className="md:text-3xl" />
+          <OpenStreamLogo href={user ? '/' : '/welcome'} className="md:text-3xl" />
 
           {/* Navigation - Desktop */}
           <nav className="hidden lg:flex items-center gap-2 absolute left-1/2 -translate-x-1/2">
@@ -241,11 +246,12 @@ export function Header() {
                     'hover:bg-white/10 text-white'
                   )}
                 >
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                    <span className="text-sm font-medium text-white">
-                      {(user.name || user.email)[0].toUpperCase()}
-                    </span>
-                  </div>
+                  <UserAvatar
+                    name={user.name}
+                    email={user.email}
+                    avatarUrl={user.avatarUrl}
+                    size="sm"
+                  />
                   <span className="hidden md:block text-sm font-medium max-w-[120px] truncate">
                     {user.name || user.email.split('@')[0]}
                   </span>
@@ -262,13 +268,21 @@ export function Header() {
                 {userMenuOpen && (
                   <div className="absolute right-0 top-full mt-3 w-64 py-3 glass rounded-2xl shadow-2xl animate-fade-in-scale origin-top-right">
                     {/* User Info */}
-                    <div className="px-5 py-3 border-b border-white/10">
-                      <p className="text-base font-medium text-white truncate">
-                        {user.name}
-                      </p>
-                      <p className="text-sm text-[var(--text-secondary)] truncate mt-1">
-                        {user.email}
-                      </p>
+                    <div className="px-5 py-3 border-b border-white/10 flex items-center gap-3">
+                      <UserAvatar
+                        name={user.name}
+                        email={user.email}
+                        avatarUrl={user.avatarUrl}
+                        size="sm"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-base font-medium text-white truncate">
+                          {user.name}
+                        </p>
+                        <p className="text-sm text-[var(--text-secondary)] truncate mt-1">
+                          {user.email}
+                        </p>
+                      </div>
                     </div>
 
                     {/* Menu Items */}
@@ -305,7 +319,7 @@ export function Header() {
                         onClick={() => {
                           logout();
                           setUserMenuOpen(false);
-                          router.push('/');
+                          router.push('/welcome');
                         }}
                         className="w-full flex items-center gap-4 px-5 py-3 text-sm text-red-400 hover:text-red-300 hover:bg-white/5 transition-colors"
                       >

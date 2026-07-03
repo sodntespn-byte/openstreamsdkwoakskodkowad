@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme, type ThemeId } from '@/context/ThemeContext';
 import { useToast } from '@/context/ToastContext';
@@ -13,7 +12,9 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { ContentGrid } from '@/components/content/ContentGrid';
 import { SkeletonProfile } from '@/components/ui/Skeleton';
 import { cn } from '@/lib/utils';
+import { UserAvatar } from '@/components/ui/UserAvatar';
 import { STORAGE_KEYS } from '@/lib/constants';
+import { resizeAvatarFile } from '@/lib/avatarImage';
 import {
   User,
   Heart,
@@ -51,9 +52,7 @@ export default function ProfilePage() {
   const [history, setHistory] = useState<WatchHistoryItem[]>([]);
   const [favorites, setFavorites] = useState<Content[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
-  const [filterMinRating, setFilterMinRating] = useState('');
-  const [filterQuality, setFilterQuality] = useState('');
-  const [filterOnly4k, setFilterOnly4k] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -71,14 +70,9 @@ export default function ProfilePage() {
   const loadUserData = useCallback(async () => {
     setIsLoadingData(true);
     try {
-      const params = new URLSearchParams();
-      if (filterMinRating) params.set('min_rating', filterMinRating);
-      if (filterQuality.trim()) params.set('quality', filterQuality.trim());
-      if (filterOnly4k) params.set('only_4k', '1');
-      const q = params.toString();
       const [historyRes, favoritesRes] = await Promise.all([
-        fetch(`/api/history${q ? `?${q}` : ''}`),
-        fetch('/api/favorites'),
+        fetch('/api/history', { credentials: 'include' }),
+        fetch('/api/favorites', { credentials: 'include' }),
       ]);
 
       if (historyRes.ok) {
@@ -114,7 +108,7 @@ export default function ProfilePage() {
     } finally {
       setIsLoadingData(false);
     }
-  }, [filterMinRating, filterQuality, filterOnly4k]);
+  }, []);
 
   useEffect(() => {
     if (user) loadUserData();
@@ -151,24 +145,26 @@ export default function ProfilePage() {
 
   const handleAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !file.type.startsWith('image/')) return;
-    if (file.size > 400 * 1024) {
-      showToast('Imagem até 400KB', 'error');
+    e.target.value = '';
+    if (!file || !file.type.startsWith('image/')) {
+      showToast('Selecione um ficheiro de imagem', 'error');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const dataUrl = String(reader.result || '');
-      try {
-        await updateProfile({ avatar_url: dataUrl });
-        showToast('Foto atualizada', 'success');
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Erro ao enviar foto';
-        showToast(msg, 'error');
-      }
-    };
-    reader.readAsDataURL(file);
-    e.target.value = '';
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('Imagem até 5MB (será redimensionada)', 'error');
+      return;
+    }
+    setAvatarUploading(true);
+    try {
+      const dataUrl = await resizeAvatarFile(file);
+      await updateProfile({ avatar_url: dataUrl });
+      showToast('Foto guardada na conta', 'success');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao enviar foto';
+      showToast(msg, 'error');
+    } finally {
+      setAvatarUploading(false);
+    }
   };
 
   const applyTheme = async (t: ThemeId) => {
@@ -251,7 +247,7 @@ export default function ProfilePage() {
     vote_average: item.vote_average ?? 0,
     vote_count: 0,
     popularity: 0,
-    overview: item.max_quality ? `Qualidade: ${item.max_quality}` : '',
+    overview: '',
   }));
 
   const themeLabel =
@@ -260,15 +256,13 @@ export default function ProfilePage() {
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6 mb-8">
-        <div className="relative w-24 h-24 rounded-full overflow-hidden ring-2 ring-[var(--border-color)] bg-[var(--bg-tertiary)] shrink-0">
-          {user.avatarUrl ? (
-            <Image src={user.avatarUrl} alt="" fill className="object-cover" unoptimized />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-[var(--accent-primary)] text-black text-3xl font-bold">
-              {user.name?.[0]?.toUpperCase() || user.email[0].toUpperCase()}
-            </div>
-          )}
-        </div>
+        <UserAvatar
+          name={user.name}
+          email={user.email}
+          avatarUrl={user.avatarUrl}
+          size="md"
+          className="ring-2 ring-[var(--border-color)]"
+        />
         <div>
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">
             {user.name || 'Usuário'}
@@ -303,38 +297,12 @@ export default function ProfilePage() {
             <h2 className="text-xl font-semibold text-[var(--text-primary)]">
               Histórico de visualização
             </h2>
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={filterMinRating}
-                onChange={(e) => setFilterMinRating(e.target.value)}
-                className="rounded-lg border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-primary)]"
-              >
-                <option value="">TMDB: qualquer nota</option>
-                <option value="6">≥ 6</option>
-                <option value="7">≥ 7</option>
-                <option value="8">≥ 8</option>
-              </select>
-              <Input
-                placeholder="Qualidade contém…"
-                value={filterQuality}
-                onChange={(e) => setFilterQuality(e.target.value)}
-                className="w-44"
-              />
-              <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)] cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={filterOnly4k}
-                  onChange={(e) => setFilterOnly4k(e.target.checked)}
-                />
-                Só 4K
-              </label>
-              {history.length > 0 && (
-                <Button variant="danger" size="sm" onClick={handleClearHistory} className="gap-2">
-                  <Trash2 size={16} />
-                  Limpar
-                </Button>
-              )}
-            </div>
+            {history.length > 0 && (
+              <Button variant="danger" size="sm" onClick={handleClearHistory} className="gap-2">
+                <Trash2 size={16} />
+                Limpar histórico
+              </Button>
+            )}
           </div>
 
           <ContentGrid
@@ -342,7 +310,7 @@ export default function ProfilePage() {
             isLoading={isLoadingData}
             showType
             columns={6}
-            emptyMessage="Nenhum resultado com estes filtros"
+            emptyMessage="Nenhum título no histórico"
           />
         </TabsContent>
 
@@ -369,10 +337,25 @@ export default function ProfilePage() {
                   <p className="text-sm text-[var(--text-secondary)]">Imagem redimensionada no servidor (privacidade)</p>
                 </div>
               </div>
-              <label className="inline-flex items-center gap-3 cursor-pointer text-[var(--accent-primary)] font-medium">
+              <label
+                className={cn(
+                  'inline-flex items-center gap-3 font-medium',
+                  avatarUploading
+                    ? 'text-[var(--text-secondary)] cursor-wait'
+                    : 'text-[var(--accent-primary)] cursor-pointer'
+                )}
+              >
                 <ImageIcon size={20} />
-                <span className="text-sm">Carregar imagem (máx. 400KB)</span>
-                <input type="file" accept="image/*" className="hidden" onChange={handleAvatar} />
+                <span className="text-sm">
+                  {avatarUploading ? 'A guardar…' : 'Carregar imagem (máx. 400KB)'}
+                </span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  className="hidden"
+                  disabled={avatarUploading}
+                  onChange={handleAvatar}
+                />
               </label>
             </article>
 

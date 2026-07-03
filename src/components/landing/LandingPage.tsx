@@ -106,7 +106,7 @@ export function LandingPage() {
             )}
           >
             Faça login para ver o catálogo completo, o destaque em alta e continuar de onde parou —
-            tudo com a cara da Superflix.
+            tudo com a cara da OpenStream.
           </p>
 
           <div

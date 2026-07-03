@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from 'next';
 import { Poppins } from 'next/font/google';
 import './globals.css';
 import { Providers } from '@/components/Providers';
-import { ConsoleFilter } from '@/components/ConsoleFilter';
 
 const poppins = Poppins({
   subsets: ['latin'],
@@ -12,15 +11,15 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: 'Superflix — Filmes, Séries e Animes',
+  title: 'OpenStream — Filmes, Séries e Animes',
   description:
     'Assista aos melhores filmes, séries e animes em HD. Streaming com legendas em português.',
-  keywords: ['streaming', 'filmes', 'séries', 'animes', 'Superflix', 'assistir online', 'hd', 'legendado'],
-  authors: [{ name: 'Superflix' }],
+  keywords: ['streaming', 'filmes', 'séries', 'animes', 'OpenStream', 'assistir online', 'hd', 'legendado'],
+  authors: [{ name: 'OpenStream' }],
   manifest: '/manifest.json',
   icons: {
     icon: '/favicon.ico',
-    apple: '/icons/icon-192x192.png',
+    apple: '/favicon.ico',
   },
 };
 
@@ -39,9 +38,34 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="pt-BR" className="scroll-smooth" suppressHydrationWarning>
+    <html lang="pt-BR" className="scroll-smooth">
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              // Suprimir erros de console desnecessários
+              (function() {
+                const originalError = console.error;
+                const originalWarn = console.warn;
+                const suppress = ['attestation', 'topics', 'react devtools'];
+                function shouldSuppress(args) {
+                  const msg = args.map(a => String(a)).join(' ').toLowerCase();
+                  return suppress.some(s => msg.includes(s));
+                }
+                console.error = function(...args) {
+                  if (shouldSuppress(args)) return;
+                  return originalError.apply(console, args);
+                };
+                console.warn = function(...args) {
+                  if (shouldSuppress(args)) return;
+                  return originalWarn.apply(console, args);
+                };
+              })();
+            `,
+          }}
+        />
+      </head>
       <body className={poppins.className}>
-        <ConsoleFilter />
         <Providers>
           {children}
         </Providers>

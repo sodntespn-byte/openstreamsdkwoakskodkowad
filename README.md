@@ -430,11 +430,16 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 | `POSTGRES_URL` | Sim | URL de conexao PostgreSQL |
 | `JWT_SECRET` | Sim | Segredo para tokens JWT (min. 32 caracteres) |
 
-### Outras plataformas
+### Outras Plataformas
 
-O Superflix funciona em qualquer plataforma que suporte Next.js (Railway, Render, Docker, etc.).
+O Superflix funciona em qualquer plataforma que suporte Next.js:
+- Railway
+- Render
+- DigitalOcean
+- AWS Amplify
+- Docker
 
-**Square Cloud / ZIP pequeno:** não inclua `node_modules`, `.next`, `.git`, `dist/`, `build/`, caches Python (`venv/`, `__pycache__/`) nem `.env` no ficheiro enviado — a hospedagem instala dependências no deploy. Lista de exclusão: [`.squarecloudignore`](.squarecloudignore). ZIP só com código versionado: `npm run zip:deploy`. **TMDB:** defina `NEXT_PUBLIC_TMDB_API_KEY` nas variáveis de ambiente **antes** do `npm run build` na Square (a chave entra no bundle do browser; sem ela verá 401 e a home fica vazia). Opcional: `PG_POOL_MAX=4`.
+---
 
 ## Scripts Disponiveis
 
@@ -484,5 +489,3 @@ Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para ma
     <img src="https://img.shields.io/badge/🎬_Acesse_o_Superflix-00d26a?style=for-the-badge" alt="Acesse o Superflix" />
   </a>
 </p>
-# openstreamsdkwoakskodkowad
-# openstreamsdkwoakskodkowad

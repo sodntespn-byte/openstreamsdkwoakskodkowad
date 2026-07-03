@@ -3,6 +3,7 @@ import { sql, isOfflineMode, inMemoryData, ensureViewerProfilesTable } from '@/l
 import type { ViewerProfileRow } from '@/lib/db';
 import { getCurrentUser } from '@/lib/auth';
 import { isValidAvatarId, serializeViewerProfile } from '@/lib/viewerProfileUtils';
+import { normalizeViewerAvatarUrl } from '@/lib/viewerProfileAvatar';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -24,8 +25,27 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const patchAvatar =
       typeof body.avatarId === 'string' && isValidAvatarId(body.avatarId) ? body.avatarId : undefined;
 
+    let patchAvatarUrl: string | null | undefined;
+    if (body.avatarUrl === null || body.avatarUrl === '') {
+      patchAvatarUrl = null;
+    } else if (typeof body.avatarUrl === 'string' && body.avatarUrl.trim()) {
+      try {
+        patchAvatarUrl = await normalizeViewerAvatarUrl(body.avatarUrl);
+      } catch {
+        return NextResponse.json({ error: 'Imagem inválida ou demasiado grande' }, { status: 400 });
+      }
+    }
+
     if (patchName !== undefined && !patchName) {
       return NextResponse.json({ error: 'Nome não pode ser vazio' }, { status: 400 });
+    }
+
+    if (
+      patchName === undefined &&
+      patchAvatar === undefined &&
+      patchAvatarUrl === undefined
+    ) {
+      return NextResponse.json({ error: 'Nada para atualizar' }, { status: 400 });
     }
 
     if (!isOfflineMode) {
@@ -43,6 +63,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         ...cur,
         name: patchName ?? cur.name,
         avatar_id: patchAvatar ?? cur.avatar_id,
+        avatar_url: patchAvatarUrl !== undefined ? patchAvatarUrl : cur.avatar_url ?? null,
         updated_at: now,
       };
       inMemoryData.viewerProfiles[idx] = updated;
@@ -56,35 +77,29 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Perfil não encontrado' }, { status: 404 });
     }
 
-    if (patchName !== undefined && patchAvatar !== undefined) {
-      const res = await sql<ViewerProfileRow>`
-        UPDATE viewer_profiles
-        SET name = ${patchName}, avatar_id = ${patchAvatar}, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ${id} AND user_id = ${user.userId}
-        RETURNING *
-      `;
-      return NextResponse.json({ profile: serializeViewerProfile(res.rows[0]) });
-    }
-    if (patchName !== undefined) {
-      const res = await sql<ViewerProfileRow>`
-        UPDATE viewer_profiles
-        SET name = ${patchName}, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ${id} AND user_id = ${user.userId}
-        RETURNING *
-      `;
-      return NextResponse.json({ profile: serializeViewerProfile(res.rows[0]) });
-    }
-    if (patchAvatar !== undefined) {
-      const res = await sql<ViewerProfileRow>`
-        UPDATE viewer_profiles
-        SET avatar_id = ${patchAvatar}, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ${id} AND user_id = ${user.userId}
-        RETURNING *
-      `;
-      return NextResponse.json({ profile: serializeViewerProfile(res.rows[0]) });
+    const cur = await sql<ViewerProfileRow>`
+      SELECT * FROM viewer_profiles WHERE id = ${id} AND user_id = ${user.userId} LIMIT 1
+    `;
+    const row = cur.rows[0];
+    if (!row) {
+      return NextResponse.json({ error: 'Perfil não encontrado' }, { status: 404 });
     }
 
-    return NextResponse.json({ error: 'Nada para atualizar' }, { status: 400 });
+    const nextName = patchName ?? row.name;
+    const nextAvatarId = patchAvatar ?? row.avatar_id;
+    const nextAvatarUrl = patchAvatarUrl !== undefined ? patchAvatarUrl : row.avatar_url ?? null;
+
+    const res = await sql<ViewerProfileRow>`
+      UPDATE viewer_profiles
+      SET
+        name = ${nextName},
+        avatar_id = ${nextAvatarId},
+        avatar_url = ${nextAvatarUrl},
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ${id} AND user_id = ${user.userId}
+      RETURNING *
+    `;
+    return NextResponse.json({ profile: serializeViewerProfile(res.rows[0]) });
   } catch (error) {
     console.error('PATCH /api/profiles/[id]:', error);
     return NextResponse.json({ error: 'Erro ao atualizar perfil' }, { status: 500 });

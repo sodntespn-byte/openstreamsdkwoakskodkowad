@@ -27,7 +27,7 @@ export default function PrivacidadePage() {
             <h2 className="text-2xl font-semibold text-white">1. Introdução</h2>
             <p>
               A sua privacidade é importante para nós. Esta Política de Privacidade explica como
-              o Superflix coleta, usa, armazena e protege suas informações quando você usa
+              o OpenStream coleta, usa, armazena e protege suas informações quando você usa
               nosso serviço.
             </p>
           </section>

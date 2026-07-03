@@ -1,16 +1,16 @@
-import { TMDB_API_KEY, TMDB_BASE_URL, TMDB_IMAGE_BASE, CACHE_TTL } from '@/lib/constants';
+import {
+  TMDB_API_KEY,
+  TMDB_BASE_URL,
+  TMDB_IMAGE_BASE,
+  CACHE_TTL,
+  SUPERFLIX_API_MIRRORS,
+} from '@/lib/constants';
 import type { Content, ContentDetails, SeasonDetails, TMDBResponse, SearchResult } from '@/types/content';
 
 // Cache em memória com TTL
 const cache = new Map<string, { data: unknown; timestamp: number }>();
 
 async function fetchWithCache<T>(url: string): Promise<T> {
-  if (!TMDB_API_KEY?.trim()) {
-    throw new Error(
-      'TMDB: chave em falta. Defina NEXT_PUBLIC_TMDB_API_KEY no ambiente (Square Cloud → Variáveis) e faça novo build.'
-    );
-  }
-
   const cached = cache.get(url);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
     return cached.data as T;
@@ -18,11 +18,6 @@ async function fetchWithCache<T>(url: string): Promise<T> {
 
   const response = await fetch(url, { next: { revalidate: 600 } });
   if (!response.ok) {
-    if (response.status === 401 || response.status === 403) {
-      throw new Error(
-        `TMDB recusou o pedido (${response.status}). Chave inválida ou ausente no build: confira NEXT_PUBLIC_TMDB_API_KEY no painel e volte a correr npm run build.`
-      );
-    }
     throw new Error(`TMDB API error: ${response.status}`);
   }
 
@@ -33,7 +28,7 @@ async function fetchWithCache<T>(url: string): Promise<T> {
 
 export const tmdb = {
   getImageUrl(path: string | null, size: string = 'w500'): string {
-    if (!path) return '/icons/icon-192.png';
+    if (!path) return '/placeholder-poster.jpg';
     return `${TMDB_IMAGE_BASE}/${size}${path}`;
   },
 
@@ -191,19 +186,21 @@ export const tmdb = {
   },
 };
 
+function normalizeSuperflixMovieId(id: string): string {
+  const s = id.trim();
+  if (s.startsWith('tt')) return s;
+  if (/^\d+$/.test(s)) return `tt${s}`;
+  return s;
+}
+
 export const superflixApi = {
-  // URL base sem proxy
-  // Filmes: usam IMDb ID (formato: tt1234567)
-  // Séries: usam TMDB ID
+  // Filmes: IMDb ID (tt…). Séries: TMDB ID.
   getDirectUrl(type: 'movie' | 'tv', id: string, season?: number, episode?: number): string {
-    const baseUrl = 'https://superflixapi.cv';
+    const baseUrl = SUPERFLIX_API_MIRRORS[0];
     if (type === 'movie') {
-      // Filmes precisam do IMDb ID com prefixo 'tt'
-      // Se já tem 'tt', usa diretamente; senão, assume que é TMDB ID e não vai funcionar
-      return `${baseUrl}/filme/${id}`;
+      return `${baseUrl}/filme/${normalizeSuperflixMovieId(id)}`;
     }
-    // Séries usam TMDB ID
-    return `${baseUrl}/serie/${id}/${season}/${episode}`;
+    return `${baseUrl}/serie/${id}/${season ?? 1}/${episode ?? 1}`;
   },
 
   // URL com proxy para contornar bloqueios

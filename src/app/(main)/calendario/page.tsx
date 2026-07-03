@@ -12,19 +12,9 @@ import {
   Loader2
 } from 'lucide-react';
 
-interface CalendarEpisode {
-  title: string;
-  episode: string;
-  season: number;
-  number: number;
-  air_date: string;
-  type: number; // 2=série, 3=anime, 5=drama
-  tmdb_id: string;
-  imdb_id: string;
-  poster: string;
-  backdrop: string;
-  status: 'Atualizado' | 'Futuro' | 'Hoje';
-}
+import type { SuperflixCalendarEpisode } from '@/lib/superflixFetch';
+
+type CalendarEpisode = SuperflixCalendarEpisode;
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
 
@@ -61,13 +51,18 @@ export default function CalendarioPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch('https://superflixapi.cv/calendario.php');
-      if (!response.ok) throw new Error('Falha ao carregar calendário');
+      const response = await fetch('/api/superflix/calendario', { cache: 'no-store' });
       const data = await response.json();
+      if (!response.ok) {
+        throw new Error(typeof data.error === 'string' ? data.error : 'Falha ao carregar calendário');
+      }
+      if (!Array.isArray(data)) throw new Error('Resposta inválida');
       setEpisodes(data);
     } catch (err) {
       console.error('Erro ao carregar calendário:', err);
-      setError('Não foi possível carregar o calendário. Tente novamente.');
+      setError(
+        err instanceof Error ? err.message : 'Não foi possível carregar o calendário. Tente novamente.'
+      );
     } finally {
       setIsLoading(false);
     }
@@ -164,7 +159,7 @@ export default function CalendarioPage() {
                 Calendário
               </h1>
               <p className="text-gray-400 text-sm md:text-base mt-0.5 md:mt-1">
-                Lançamentos de séries, animes e dramas
+                Lançamentos em tempo real via SuperFlixAPI
               </p>
             </div>
           </div>

@@ -8,6 +8,7 @@ import {
   isValidAvatarId,
   serializeViewerProfile,
 } from '@/lib/viewerProfileUtils';
+import { normalizeViewerAvatarUrl } from '@/lib/viewerProfileAvatar';
 
 async function ensureDefaultProfilesOnline(userId: number) {
   await ensureViewerProfilesTable();
@@ -18,15 +19,15 @@ async function ensureDefaultProfilesOnline(userId: number) {
   `;
   if (result.rows.length > 0) return result.rows;
 
-  const u = await sql<{ name: string | null; email: string }>`
-    SELECT name, email FROM users WHERE id = ${userId} LIMIT 1
+  const u = await sql<{ name: string | null; email: string; avatar_url: string | null }>`
+    SELECT name, email, avatar_url FROM users WHERE id = ${userId} LIMIT 1
   `;
   const row = u.rows[0];
   const displayName = (row?.name?.trim() || row?.email?.split('@')[0] || 'Perfil 1').slice(0, 100);
 
   await sql`
-    INSERT INTO viewer_profiles (user_id, name, avatar_id, sort_order)
-    VALUES (${userId}, ${displayName}, 'gradient-1', 0)
+    INSERT INTO viewer_profiles (user_id, name, avatar_id, avatar_url, sort_order)
+    VALUES (${userId}, ${displayName}, 'gradient-1', ${row?.avatar_url ?? null}, 0)
   `;
 
   result = await sql<ViewerProfileRow>`
@@ -49,6 +50,7 @@ function ensureDefaultProfilesOffline(userId: number): ViewerProfileRow[] {
     user_id: userId,
     name: displayName,
     avatar_id: 'gradient-1',
+    avatar_url: u?.avatar_url ?? null,
     sort_order: 0,
     created_at: now,
     updated_at: now,
@@ -64,9 +66,38 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
     }
 
-    const rows = isOfflineMode
+    let rows = isOfflineMode
       ? ensureDefaultProfilesOffline(user.userId)
       : await ensureDefaultProfilesOnline(user.userId);
+
+    if (!isOfflineMode) {
+      const account = await sql<{ avatar_url: string | null }>`
+        SELECT avatar_url FROM users WHERE id = ${user.userId} LIMIT 1
+      `;
+      const accountAvatar = account.rows[0]?.avatar_url;
+      if (accountAvatar) {
+        await sql`
+          UPDATE viewer_profiles
+          SET avatar_url = ${accountAvatar}, updated_at = CURRENT_TIMESTAMP
+          WHERE user_id = ${user.userId}
+            AND (avatar_url IS NULL OR avatar_url = '')
+        `;
+        const refreshed = await sql<ViewerProfileRow>`
+          SELECT * FROM viewer_profiles
+          WHERE user_id = ${user.userId}
+          ORDER BY sort_order ASC, id ASC
+        `;
+        if (refreshed.rows.length > 0) rows = refreshed.rows;
+      }
+    } else {
+      const u = inMemoryData.users.find((x) => x.id === user.userId);
+      if (u?.avatar_url) {
+        for (const p of inMemoryData.viewerProfiles) {
+          if (p.user_id === user.userId && !p.avatar_url) p.avatar_url = u.avatar_url;
+        }
+        rows = ensureDefaultProfilesOffline(user.userId);
+      }
+    }
 
     return NextResponse.json({
       profiles: rows.map((r) => serializeViewerProfile(r)),
@@ -93,6 +124,15 @@ export async function POST(request: NextRequest) {
     const avatarRaw = typeof body.avatarId === 'string' ? body.avatarId : 'gradient-1';
     const avatar_id = isValidAvatarId(avatarRaw) ? avatarRaw : 'gradient-1';
 
+    let avatar_url: string | null = null;
+    if (typeof body.avatarUrl === 'string' && body.avatarUrl.trim()) {
+      try {
+        avatar_url = await normalizeViewerAvatarUrl(body.avatarUrl);
+      } catch {
+        return NextResponse.json({ error: 'Imagem inválida ou demasiado grande' }, { status: 400 });
+      }
+    }
+
     if (isOfflineMode) {
       ensureDefaultProfilesOffline(user.userId);
       const count = inMemoryData.viewerProfiles.filter((p) => p.user_id === user.userId).length;
@@ -105,6 +145,7 @@ export async function POST(request: NextRequest) {
         user_id: user.userId,
         name,
         avatar_id,
+        avatar_url,
         sort_order: count,
         created_at: now,
         updated_at: now,
@@ -124,10 +165,10 @@ export async function POST(request: NextRequest) {
 
     const nextOrder = Number(cnt.rows[0]?.c || 0);
     const ins = await query<ViewerProfileRow>(
-      `INSERT INTO viewer_profiles (user_id, name, avatar_id, sort_order)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO viewer_profiles (user_id, name, avatar_id, avatar_url, sort_order)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
-      [user.userId, name, avatar_id, nextOrder]
+      [user.userId, name, avatar_id, avatar_url, nextOrder]
     );
     const row = ins.rows[0];
     if (!row) {

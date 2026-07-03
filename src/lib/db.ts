@@ -58,6 +58,7 @@ export interface ViewerProfileRow {
   user_id: number;
   name: string;
   avatar_id: string;
+  avatar_url?: string | null;
   sort_order: number;
   created_at: Date;
   updated_at: Date;
@@ -91,21 +92,14 @@ export function nextViewerProfileIdAlloc(): number {
 // Pool de conexoes PostgreSQL
 let pool: Pool | null = null;
 
-const PG_POOL_MAX = Math.min(
-  10,
-  Math.max(2, parseInt(process.env.PG_POOL_MAX || '5', 10) || 5)
-);
-
-let offlineModeWarned = false;
-
 function getPool(): Pool {
   if (!pool && !isOfflineMode) {
     pool = new Pool({
       connectionString: DATABASE_URL,
       ssl: DATABASE_URL?.includes('sslmode=disable') ? false : { rejectUnauthorized: false },
-      max: PG_POOL_MAX,
-      idleTimeoutMillis: 20000,
-      connectionTimeoutMillis: 8000,
+      max: 10,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000,
     });
 
     // Log de erros do pool
@@ -122,10 +116,7 @@ export async function query<T = unknown>(
   params?: unknown[]
 ): Promise<QueryResult<T>> {
   if (isOfflineMode) {
-    if (!offlineModeWarned) {
-      offlineModeWarned = true;
-      console.warn('Database offline - using in-memory storage');
-    }
+    console.warn('Database offline - using in-memory storage');
     return { rows: [] as T[], rowCount: null } as QueryResult<T>;
   }
 
@@ -149,10 +140,7 @@ export async function sql<T = unknown>(
   ...values: unknown[]
 ): Promise<QueryResult<T>> {
   if (isOfflineMode) {
-    if (!offlineModeWarned) {
-      offlineModeWarned = true;
-      console.warn('Database offline - using in-memory storage');
-    }
+    console.warn('Database offline - using in-memory storage');
     return { rows: [] as T[], rowCount: null } as QueryResult<T>;
   }
 
@@ -205,6 +193,7 @@ async function applySchemaPatches(client: PoolClient): Promise<void> {
   await client.query(
     `CREATE INDEX IF NOT EXISTS idx_title_reviews_user ON title_reviews(user_id)`
   );
+  await client.query(`ALTER TABLE viewer_profiles ADD COLUMN IF NOT EXISTS avatar_url TEXT`);
 
   // Favoritos: mesmo número TMDB pode existir em filme e série — chave composta com media_type
   await client.query(`
@@ -390,6 +379,7 @@ export async function ensureViewerProfilesTable(): Promise<void> {
   await query(
     `CREATE INDEX IF NOT EXISTS idx_viewer_profiles_user_id ON viewer_profiles(user_id)`
   );
+  await query(`ALTER TABLE viewer_profiles ADD COLUMN IF NOT EXISTS avatar_url TEXT`);
 }
 
 /** Garante patches de schema (avatar_url, theme, title_reviews, etc.) antes de auth. Idempotente. */

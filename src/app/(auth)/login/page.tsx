@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { Button } from '@/components/ui/Button';
@@ -10,8 +10,16 @@ import { Input } from '@/components/ui/Input';
 import { OpenStreamLogo } from '@/components/branding/OpenStreamLogo';
 import { Mail, Lock, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 
-export default function LoginPage() {
+function safeRedirect(path: string | null): string {
+  if (!path || !path.startsWith('/') || path.startsWith('//')) return '/profiles';
+  if (path.startsWith('/sala')) return path;
+  return path;
+}
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = safeRedirect(searchParams.get('redirect'));
   const { login } = useAuth();
   const { showToast } = useToast();
 
@@ -50,7 +58,7 @@ export default function LoginPage() {
     try {
       await login(email.trim(), password);
       showToast('Sessão iniciada com sucesso.', 'success');
-      router.push('/profiles');
+      router.push(redirectTo);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : 'Erro ao fazer login';
       showToast(msg, 'error');
@@ -62,7 +70,7 @@ export default function LoginPage() {
   return (
     <div>
       <div className="mb-8 text-center">
-        <Link href="/" className="inline-flex flex-col items-center gap-2">
+        <Link href="/welcome" className="inline-flex flex-col items-center gap-2">
           <OpenStreamLogo href={null} className="text-3xl sm:text-4xl" />
           <span className="text-sm font-medium text-[var(--text-secondary)]">
             Entrar na conta
@@ -79,51 +87,55 @@ export default function LoginPage() {
         <Input
           label="E-mail"
           type="email"
-          autoComplete="email"
-          placeholder="nome@exemplo.com"
+          icon={<Mail size={18} />}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           error={errors.email}
-          icon={<Mail size={18} />}
+          placeholder="tu@email.com"
+          autoComplete="email"
         />
 
         <div className="relative">
           <Input
             label="Senha"
             type={showPassword ? 'text' : 'password'}
-            autoComplete="current-password"
-            placeholder="••••••••"
+            icon={<Lock size={18} />}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             error={errors.password}
-            icon={<Lock size={18} />}
+            placeholder="••••••••"
+            autoComplete="current-password"
+            className="pr-12"
           />
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
-            className="absolute right-3 top-[2.35rem] rounded-lg p-1.5 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+            className="absolute right-3 top-[38px] text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
             aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
           >
             {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
           </button>
         </div>
 
-        <Button type="submit" className="w-full" size="lg" loading={isLoading}>
+        <Button type="submit" className="w-full" loading={isLoading}>
           Entrar
         </Button>
       </form>
 
-      <div className="mt-8 border-t border-[var(--border-subtle)] pt-6 text-center text-sm">
-        <p className="text-[var(--text-secondary)]">
-          Novo por aqui?{' '}
-          <Link
-            href="/register"
-            className="font-semibold text-[var(--accent-primary)] underline-offset-4 hover:underline"
-          >
-            Criar conta
-          </Link>
-        </p>
-      </div>
+      <p className="mt-6 text-center text-sm text-[var(--text-secondary)]">
+        Não tens conta?{' '}
+        <Link href="/register" className="text-[var(--accent-primary)] hover:underline">
+          Registar
+        </Link>
+      </p>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="loading-spinner mx-auto" aria-hidden />}>
+      <LoginForm />
+    </Suspense>
   );
 }

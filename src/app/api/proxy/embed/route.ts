@@ -1,34 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { resolveWithCloudflare, fetchWithResolvedDNS } from '@/lib/dns-resolver';
-import { acceptLanguageHeaderFromPrimary } from '@/lib/playerLocale';
+import { fetchSuperflixPlayerHtml, SUPERFLIX_PLAYER_REFERER } from '@/lib/superflixFetch';
+import { isSuperflixEmbedHost } from '@/lib/constants';
 
-// Dominios de embed permitidos
-const ALLOWED_EMBED_DOMAINS = [
-  'superflixapi.cv',
-  'superflixapi.run',
-  'superflixapi.buzz',
-  'superflixapi.top',
-  'embedtv.best',
-  'www1.embedtv.best',
-  '111movies.net',
-  'www.111movies.net',
-  'warezcdn.site',
-  'www.warezcdn.site',
-];
+const EMBEDTV_HOSTS = ['embedtv.best', 'www1.embedtv.best'];
 
 // Dominios que devem ser proxied (bloqueados pelo DNS local)
 const PROXY_DOMAINS = [
+  'superflixapi.lifestyle',
+  'superflixapi.best',
   'superflixapi.cv',
   'superflixapi.run',
   'superflixapi.buzz',
   'superflixapi.top',
+  'superflixapi.bond',
   'embedtv.best',
   'www1.embedtv.best',
-  '111movies.net',
-  'www.111movies.net',
-  'warezcdn.site',
-  'www.warezcdn.site',
-  // Dominios de stream HLS comuns
+  'cdn.superflixapi.best',
+  'stream.superflixapi.best',
   'cdn.superflixapi.cv',
   'stream.superflixapi.cv',
   'cdn.superflixapi.run',
@@ -37,10 +25,9 @@ const PROXY_DOMAINS = [
 
 function isAllowedDomain(url: string): boolean {
   try {
-    const urlObj = new URL(url);
-    return ALLOWED_EMBED_DOMAINS.some(
-      (domain) => urlObj.hostname === domain || urlObj.hostname.endsWith('.' + domain)
-    );
+    const host = new URL(url).hostname;
+    if (isSuperflixEmbedHost(host)) return true;
+    return EMBEDTV_HOSTS.some((d) => host === d || host.endsWith(`.${d}`));
   } catch {
     return false;
   }
@@ -48,6 +35,11 @@ function isAllowedDomain(url: string): boolean {
 
 /** Anti-hotlinking: só o nosso site (ou NEXT_PUBLIC_APP_URL) pode pedir o embed. */
 function isAuthorizedEmbedRequest(request: NextRequest): boolean {
+  const secDest = request.headers.get('sec-fetch-dest');
+  if (secDest === 'iframe' || secDest === 'embed') {
+    return true;
+  }
+
   const secSite = request.headers.get('sec-fetch-site');
   if (secSite === 'same-origin' || secSite === 'same-site') {
     return true;
@@ -74,11 +66,8 @@ function isAuthorizedEmbedRequest(request: NextRequest): boolean {
     try {
       const u = new URL(referer);
       if (u.hostname === hostName) return true;
-      if (process.env.NODE_ENV !== 'production') {
-        if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') return true;
-      }
     } catch {
-      return false;
+      /* ignore */
     }
   }
 
@@ -96,343 +85,233 @@ function shouldProxyUrl(url: string): boolean {
   }
 }
 
+function toProxyUrl(url: string): string {
+  if (!shouldProxyUrl(url)) return url;
+  try {
+    const path = new URL(url).pathname;
+    const isHtmlPlayer =
+      /\/filme\//.test(path) || /\/serie\//.test(path) || path.startsWith('/player');
+    if (isHtmlPlayer) {
+      return `/api/proxy/embed?url=${encodeURIComponent(url)}`;
+    }
+  } catch {
+    /* ignore */
+  }
+  return `/api/proxy/asset?url=${encodeURIComponent(url)}`;
+}
+
+const EARLY_PLAYER_PATCH = `<script>
+(function(){
+  if(!document.body){document.documentElement.appendChild(document.createElement('body'));}
+})();
+</script>
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data:; connect-src 'self' blob: data:; img-src 'self' blob: data: *; media-src 'self' blob: data: *; style-src 'self' 'unsafe-inline' *; frame-src 'self' *;">`;
+
+function stripAdScripts(html: string): string {
+  // Remover scripts de anúncios
+  html = html.replace(
+    /<script\b[^>]*\ssrc=["'][^"']*(?:chorume|trex\.php|omg10\.com)[^"']*["'][^>]*>\s*<\/script>/gi,
+    ''
+  );
+  
+  // Remover scripts do Cloudflare Turnstile - múltiplos padrões
+  html = html.replace(
+    /<script\b[^>]*\ssrc=["'][^"']*challenges\.cloudflare\.com[^"']*["'][^>]*>[\s\S]*?<\/script>/gi,
+    ''
+  );
+  html = html.replace(
+    /<script\b[^>]*\ssrc=["'][^"']*turnstile[^"']*["'][^>]*>[\s\S]*?<\/script>/gi,
+    ''
+  );
+  html = html.replace(
+    /<script\b[^>]*\ssrc=["'][^"']*cdn-cgi[^"']*["'][^>]*>[\s\S]*?<\/script>/gi,
+    ''
+  );
+  html = html.replace(
+    /<script\b[^>]*\ssrc=["'][^"']*cloudflare\.com[^"']*["'][^>]*>[\s\S]*?<\/script>/gi,
+    ''
+  );
+  
+  // Remover scripts inline que carregam Turnstile
+  html = html.replace(
+    /<script[^>]*>[\s\S]*?turnstile[\s\S]*?<\/script>/gi,
+    ''
+  );
+  html = html.replace(
+    /<script[^>]*>[\s\S]*?Cloudflare[\s\S]*?<\/script>/gi,
+    ''
+  );
+  
+  // Remover divs de Turnstile
+  html = html.replace(
+    /<div\b[^>]*\sclass=["'][^"']*turnstile[^"']*["'][^>]*>[\s\S]*?<\/div>/gi,
+    ''
+  );
+  
+  return html;
+}
+
+/** Só reescreve URLs de iframe em strings JS (não toca no array ofuscado). */
+function rewriteScriptIframeUrls(script: string): string {
+  return script.replace(
+    /src=\\"(https?:\\\/\\\/(?:[a-z0-9.-]+\.)?superflixapi\.[a-z]+(?:\\\/[^"]+)*)\\"/gi,
+    (match, escaped: string) => {
+      const absolute = escaped.replace(/\\\//g, '/');
+      if (!shouldProxyUrl(absolute)) return match;
+      const proxied = toProxyUrl(absolute);
+      return `src=\\"${proxied.replace(/\//g, '\\/')}\\"`;
+    }
+  );
+}
+
+function rewriteHtmlSegment(html: string, baseOrigin: string): string {
+  html = html.replace(
+    /<iframe\b([^>]*)\ssrc=(["'])(https?:\/\/[^"']+)\2/gi,
+    (match, attrs: string, quote: string, url: string) => {
+      if (!shouldProxyUrl(url)) return match;
+      return `<iframe${attrs} src=${quote}${toProxyUrl(url)}${quote}`;
+    }
+  );
+
+  html = html.replace(
+    /<(script|link)\b([^>]*)\s(src|href)=(["'])(\/player\/[^"']+)\4/gi,
+    (match, tag: string, attrs: string, attr: string, quote: string, path: string) => {
+      const absoluteUrl = baseOrigin + path;
+      if (!shouldProxyUrl(absoluteUrl)) return match;
+      return `<${tag}${attrs} ${attr}=${quote}${toProxyUrl(absoluteUrl)}${quote}`;
+    }
+  );
+
+  html = html.replace(
+    /<(iframe|video|audio|source|embed|link)\b([^>]*?)\s(src|href)=(["'])(https?:\/\/[^"']+)\4/gi,
+    (match, tag: string, attrs: string, attr: string, quote: string, url: string) => {
+      if (!shouldProxyUrl(url)) return match;
+      return `<${tag}${attrs} ${attr}=${quote}${toProxyUrl(url)}${quote}`;
+    }
+  );
+
+  return html;
+}
+
 function rewriteUrlsToProxy(html: string, baseOrigin: string): string {
-  // Função para criar URL de proxy
-  const proxyUrl = (url: string) => `/api/proxy/asset?url=${encodeURIComponent(url)}`;
+  html = stripAdScripts(html);
 
-  // Reescrever URLs em atributos src e href que apontam para domínios bloqueados
-  // Importante: só reescreve se a URL é completa (não tem concatenação JS como " + variavel)
+  const parts = html.split(/(<script\b[^>]*>[\s\S]*?<\/script>)/gi);
+  html = parts
+    .map((part, index) => {
+      if (index % 2 === 1) return rewriteScriptIframeUrls(part);
+      return rewriteHtmlSegment(part, baseOrigin);
+    })
+    .join('');
+
+  // Neutralizar anti-embed (init ofuscado: __Y[_0x4d066f(0xfc)]())
   html = html.replace(
-    /(src|href)=(["'])(https?:\/\/[^"']+)\2(?!\s*\+)/gi,
-    (match, attr, quote, url) => {
-      if (shouldProxyUrl(url)) {
-        return `${attr}=${quote}${proxyUrl(url)}${quote}`;
-      }
-      return match;
-    }
+    /__Y\[_0x4d066f\(0xfc\)\]\(\)/g,
+    '(__Y.detectSandbox=function(){},__Y[_0x4d066f(0xfc)]())'
   );
 
-  // Reescrever URLs relativas (sem http/https) para URLs absolutas e então para proxy
-  // Importante: só reescreve se a URL é completa (não tem concatenação JS)
-  html = html.replace(
-    /(src|href)=(["'])(?!https?:\/\/|data:|\/api\/|#|javascript:)([^"']+)\2(?!\s*\+)/gi,
-    (match, attr, quote, path) => {
-      // Construir URL absoluta
-      let absoluteUrl: string;
-      if (path.startsWith('//')) {
-        absoluteUrl = 'https:' + path;
-      } else if (path.startsWith('/')) {
-        absoluteUrl = baseOrigin + path;
-      } else {
-        absoluteUrl = baseOrigin + '/' + path;
-      }
-
-      if (shouldProxyUrl(absoluteUrl)) {
-        return `${attr}=${quote}${proxyUrl(absoluteUrl)}${quote}`;
-      }
-      return `${attr}=${quote}${absoluteUrl}${quote}`;
-    }
-  );
-
-  // Injetar script para interceptar fetch, XMLHttpRequest e HLS
   const interceptorScript = `
 <script>
 (function() {
+  'use strict';
+  
+  // Neutralizar Cloudflare Turnstile antes de carregar
+  if (window.turnstile) {
+    window.turnstile = {
+      render: function() { return null; },
+      execute: function() { return Promise.resolve(null); },
+      reset: function() {},
+      remove: function() {},
+      getResponse: function() { return null; }
+    };
+  }
+  
+  // Bloquear carregamento de scripts do Cloudflare
+  const originalCreateElement = document.createElement;
+  document.createElement = function(tagName) {
+    const element = originalCreateElement.call(document, tagName);
+    if (tagName.toLowerCase() === 'script') {
+      const originalSetAttribute = element.setAttribute;
+      element.setAttribute = function(name, value) {
+        if (name === 'src' && (value.includes('cloudflare.com') || value.includes('cdn-cgi') || value.includes('challenges') || value.includes('turnstile'))) {
+          console.log('[Proxy] Bloqueando script Cloudflare:', value);
+          return;
+        }
+        return originalSetAttribute.call(this, name, value);
+      };
+    }
+    return element;
+  };
+  
   const PROXY_DOMAINS = ${JSON.stringify(PROXY_DOMAINS)};
   const PROXY_BASE = '/api/proxy/';
 
-  // URLs que devem ser bloqueadas (causam erros de CORS ou são desnecessárias)
-  const BLOCKED_URLS = [
-    '/cdn-cgi/rum',           // Cloudflare RUM - causa erro de CORS
-    'cdn-cgi/rum',
-    '.ttf',                   // Fontes que podem falhar
-    '.woff',
-    '.woff2'
-  ];
-
-  // Domínios de WebSocket P2P que podem falhar
-  const BLOCKED_WS_DOMAINS = [
-    'p2p.s27-usa-cloudfront-net.online',
-    'p2p.',
-    'tracker.',
-    'wss://'
-  ];
-
-  function shouldBlock(url) {
-    if (!url) return false;
-    const urlStr = url.toString().toLowerCase();
-    return BLOCKED_URLS.some(blocked => urlStr.includes(blocked));
+  function resolveUrl(url) {
+    try {
+      return new URL(String(url), document.baseURI || window.location.href);
+    } catch { return null; }
   }
 
   function shouldProxy(url) {
-    try {
-      // Converter URL relativa para absoluta
-      const urlObj = new URL(url, window.location.origin);
-      // Verificar se é um domínio que deve ser proxiado
-      return PROXY_DOMAINS.some(d => urlObj.hostname === d || urlObj.hostname.endsWith('.' + d));
-    } catch { return false; }
-  }
-
-  function proxyUrl(url, type) {
-    // Determinar qual endpoint usar baseado no tipo
-    const endpoint = type === 'hls' ? 'hls' : 'asset';
-    return PROXY_BASE + endpoint + '?url=' + encodeURIComponent(url);
-  }
-
-  function isHlsUrl(url) {
-    return url.includes('.m3u8') || url.includes('.ts');
-  }
-
-  // Interceptar fetch - bloquear URLs problemáticas
-  const originalFetch = window.fetch;
-  window.fetch = function(input, init) {
-    let url = typeof input === 'string' ? input : input.url;
-
-    // Bloquear URLs que causam erros
-    if (shouldBlock(url)) {
-      return Promise.resolve(new Response('', { status: 200 }));
+    const u = resolveUrl(url);
+    if (!u) return false;
+    // Bloquear requisições para Cloudflare (Turnstile, RUM, challenges)
+    if (u.hostname.includes('cloudflare.com') || 
+        u.hostname.includes('cdn-cgi') ||
+        u.pathname.includes('/cdn-cgi/') ||
+        u.pathname.includes('/challenges/')) {
+      return false;
     }
+    return PROXY_DOMAINS.some(function(d) {
+      return u.hostname === d || u.hostname.endsWith('.' + d);
+    });
+  }
 
-    if (shouldProxy(url)) {
-      const type = isHlsUrl(url) ? 'hls' : 'asset';
-      url = proxyUrl(url, type);
-      if (typeof input === 'string') {
-        input = url;
-      } else {
-        input = new Request(url, input);
-      }
+  function proxyUrl(url) {
+    var u = resolveUrl(url);
+    var abs = u ? u.href : String(url);
+    var ep = (abs.indexOf('.m3u8') !== -1 || abs.indexOf('.ts') !== -1) ? 'hls' : 'asset';
+    return PROXY_BASE + ep + '?url=' + encodeURIComponent(abs);
+  }
+
+  var originalFetch = window.fetch;
+  window.fetch = function(input, init) {
+    var url = typeof input === 'string' ? input : (input && input.url);
+    // Bloquear requisições Cloudflare
+    if (url && (url.includes('cloudflare.com') || url.includes('cdn-cgi') || url.includes('challenges') || url.includes('turnstile'))) {
+      console.log('[Proxy] Bloqueando fetch Cloudflare:', url);
+      return Promise.reject(new Error('Cloudflare request blocked'));
+    }
+    // Proxy URLs permitidas
+    if (url && shouldProxy(url)) {
+      var proxied = proxyUrl(url);
+      input = typeof input === 'string' ? proxied : new Request(proxied, input);
     }
     return originalFetch.call(this, input, init);
   };
 
-  // Interceptar XMLHttpRequest - bloquear URLs problemáticas
-  const originalOpen = XMLHttpRequest.prototype.open;
-  const originalSend = XMLHttpRequest.prototype.send;
-  const originalSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
-
-  XMLHttpRequest.prototype.open = function(method, url, ...args) {
-    this._blockedXhr = shouldBlock(url);
-    this._xhrOpened = !this._blockedXhr;
-
-    if (this._blockedXhr) {
-      // Abrir para uma URL dummy para evitar erros de estado
-      return originalOpen.call(this, 'GET', 'data:text/plain,', true);
+  var originalOpen = XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open = function(method, url) {
+    var args = Array.prototype.slice.call(arguments, 2);
+    var resolved = resolveUrl(url);
+    if (resolved && resolved.origin === window.location.origin && resolved.pathname.indexOf('/player/') === 0) {
+      url = proxyUrl(resolved.href);
+    } else if (shouldProxy(url)) {
+      url = proxyUrl(url);
     }
-
-    if (shouldProxy(url)) {
-      const type = isHlsUrl(url) ? 'hls' : 'asset';
-      url = proxyUrl(url, type);
-    }
-    return originalOpen.call(this, method, url, ...args);
+    return originalOpen.apply(this, [method, url].concat(args));
   };
-
-  XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
-    if (this._blockedXhr) return; // Ignorar headers para XHR bloqueados
-    return originalSetRequestHeader.call(this, name, value);
-  };
-
-  XMLHttpRequest.prototype.send = function(...args) {
-    if (this._blockedXhr) {
-      // Simular resposta bem-sucedida
-      const self = this;
-      setTimeout(() => {
-        Object.defineProperty(self, 'status', { value: 200, writable: true });
-        Object.defineProperty(self, 'readyState', { value: 4, writable: true });
-        Object.defineProperty(self, 'responseText', { value: '', writable: true });
-        Object.defineProperty(self, 'response', { value: '', writable: true });
-        if (self.onreadystatechange) self.onreadystatechange();
-        if (self.onload) self.onload();
-      }, 0);
-      return;
-    }
-    return originalSend.apply(this, args);
-  };
-
-  // Interceptar WebSocket para bloquear conexões P2P problemáticas
-  const OriginalWebSocket = window.WebSocket;
-  window.WebSocket = function(url, protocols) {
-    const urlStr = url.toString().toLowerCase();
-    const shouldBlockWs = BLOCKED_WS_DOMAINS.some(d => urlStr.includes(d));
-
-    if (shouldBlockWs) {
-      // Criar um WebSocket falso que não faz nada
-      const fakeWs = {
-        url: url,
-        readyState: 3, // CLOSED
-        send: function() {},
-        close: function() {},
-        addEventListener: function() {},
-        removeEventListener: function() {},
-        onopen: null,
-        onclose: null,
-        onerror: null,
-        onmessage: null
-      };
-      // Simular fechamento após um momento
-      setTimeout(() => {
-        if (fakeWs.onclose) fakeWs.onclose({ code: 1000, reason: 'blocked' });
-      }, 100);
-      return fakeWs;
-    }
-
-    return new OriginalWebSocket(url, protocols);
-  };
-  window.WebSocket.CONNECTING = 0;
-  window.WebSocket.OPEN = 1;
-  window.WebSocket.CLOSING = 2;
-  window.WebSocket.CLOSED = 3;
-
-  // Suprimir erros de console relacionados a recursos bloqueados
-  const originalConsoleError = console.error;
-  const originalConsoleWarn = console.warn;
-
-  function shouldSuppressLog(args) {
-    const msg = args.map(a => String(a)).join(' ').toLowerCase();
-    return msg.includes('cors') ||
-           msg.includes('cdn-cgi') ||
-           msg.includes('websocket') ||
-           msg.includes('net::err') ||
-           msg.includes('.ttf') ||
-           msg.includes('.woff') ||
-           msg.includes('attestation') ||
-           msg.includes('invalidstateerror') ||
-           msg.includes('setrequestheader') ||
-           msg.includes('topics') ||
-           msg.includes('jsdelivr') ||
-           msg.includes('blocked') ||
-           msg.includes('failed to load');
-  }
-
-  console.error = function(...args) {
-    if (shouldSuppressLog(args)) return;
-    return originalConsoleError.apply(console, args);
-  };
-
-  console.warn = function(...args) {
-    if (shouldSuppressLog(args)) return;
-    return originalConsoleWarn.apply(console, args);
-  };
-
-  // Capturar erros globais não tratados
-  window.addEventListener('error', function(e) {
-    const msg = (e.message || '').toLowerCase();
-    if (msg.includes('cors') ||
-        msg.includes('ttf') ||
-        msg.includes('woff') ||
-        msg.includes('invalidstate') ||
-        msg.includes('setrequestheader') ||
-        msg.includes('jsdelivr')) {
-      e.preventDefault();
-      e.stopPropagation();
-      return false;
-    }
-  }, true);
-
-  // Capturar rejeições de Promise não tratadas
-  window.addEventListener('unhandledrejection', function(e) {
-    const msg = String(e.reason || '').toLowerCase();
-    if (msg.includes('cors') ||
-        msg.includes('ttf') ||
-        msg.includes('woff') ||
-        msg.includes('blocked') ||
-        msg.includes('invalidstate')) {
-      e.preventDefault();
-      return false;
-    }
-  });
-
-  // Interceptar createElement para capturar scripts dinâmicos
-  const originalCreateElement = document.createElement;
-  document.createElement = function(tagName) {
-    const element = originalCreateElement.call(document, tagName);
-    if (tagName.toLowerCase() === 'script' || tagName.toLowerCase() === 'img') {
-      const originalSetAttribute = element.setAttribute;
-      element.setAttribute = function(name, value) {
-        if (name === 'src' && shouldProxy(value)) {
-          value = proxyUrl(value, 'asset');
-        }
-        return originalSetAttribute.call(this, name, value);
-      };
-      // Também interceptar a propriedade src
-      Object.defineProperty(element, 'src', {
-        set: function(value) {
-          if (shouldProxy(value)) {
-            value = proxyUrl(value, 'asset');
-          }
-          this.setAttribute('src', value);
-        },
-        get: function() {
-          return this.getAttribute('src');
-        }
-      });
-    }
-    return element;
-  };
-
-  console.log('[Superflix Proxy] Interceptors initialized');
-
-  // Auto-unmute: Tentar desmutar vídeos quando o usuário interagir
-  function tryUnmute() {
-    const videos = document.querySelectorAll('video');
-    videos.forEach(video => {
-      if (video.muted) {
-        video.muted = false;
-        console.log('[Superflix Proxy] Video unmuted');
-      }
-    });
-  }
-
-  // Observar novos elementos de vídeo
-  const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      mutation.addedNodes.forEach((node) => {
-        if (node.nodeName === 'VIDEO') {
-          // Quando um vídeo é adicionado, tentar desmutar após um delay
-          setTimeout(() => {
-            if (node.muted) {
-              node.muted = false;
-              console.log('[Superflix Proxy] New video unmuted');
-            }
-          }, 1000);
-        }
-      });
-    });
-  });
-
-  observer.observe(document.documentElement, {
-    childList: true,
-    subtree: true
-  });
-
-  // Desmutar em qualquer interação do usuário
-  ['click', 'touchstart', 'keydown'].forEach(event => {
-    document.addEventListener(event, function unmuter() {
-      tryUnmute();
-      // Continuar tentando por alguns segundos após a interação
-      setTimeout(tryUnmute, 500);
-      setTimeout(tryUnmute, 1000);
-      setTimeout(tryUnmute, 2000);
-    }, { passive: true });
-  });
-
-  // Tentar desmutar periodicamente nos primeiros segundos
-  let attempts = 0;
-  const unmuteInterval = setInterval(() => {
-    tryUnmute();
-    attempts++;
-    if (attempts > 10) clearInterval(unmuteInterval);
-  }, 500);
 })();
 </script>`;
 
-  // Injetar o script no head
+  // Injetar patches no head (body cedo + interceptors)
+  const headInjection = EARLY_PLAYER_PATCH + interceptorScript;
   if (html.includes('<head>')) {
-    html = html.replace('<head>', '<head>' + interceptorScript);
+    html = html.replace('<head>', '<head>' + headInjection);
   } else if (html.includes('<head ')) {
-    html = html.replace(/<head([^>]*)>/, '<head$1>' + interceptorScript);
+    html = html.replace(/<head([^>]*)>/, '<head$1>' + headInjection);
   } else {
-    // Se não tiver head, adicionar no início
-    html = interceptorScript + html;
+    html = headInjection + html;
   }
 
   return html;
@@ -440,119 +319,49 @@ function rewriteUrlsToProxy(html: string, baseOrigin: string): string {
 
 export const dynamic = 'force-dynamic';
 
-// Função para seguir redirects com DNS customizado
-async function fetchWithRedirects(
-  url: string,
-  referer: string,
-  maxRedirects = 5,
-  acceptLanguage?: string,
-  debug = false
-): Promise<{ status: number; body: string } | null> {
-  let currentUrl = url;
-  let redirectCount = 0;
-
-  while (redirectCount < maxRedirects) {
-    const urlObj = new URL(currentUrl);
-    const hostname = urlObj.hostname;
-
-    // Resolver DNS via Cloudflare
-    const resolvedIP = await resolveWithCloudflare(hostname);
-    if (!resolvedIP) {
-      console.error(`[Proxy] DNS failed for: ${hostname}`);
-      return null;
-    }
-
-    if (debug) {
-      console.log(`[Proxy] ${hostname} -> ${resolvedIP}`);
-    }
-
-    try {
-      const result = await fetchWithResolvedDNS(currentUrl, resolvedIP, {
-        referer,
-        acceptLanguage,
-      });
-
-      // Se for redirect, seguir
-      if (result.status >= 300 && result.status < 400 && result.redirect) {
-        if (debug) {
-          console.log(`[Proxy] Redirect ${result.status} -> ${result.redirect}`);
-        }
-        currentUrl = result.redirect.startsWith('http')
-          ? result.redirect
-          : new URL(result.redirect, currentUrl).href;
-
-        // Verificar se o novo domínio é permitido
-        if (!isAllowedDomain(currentUrl)) {
-          console.error(`[Proxy] Redirect para domínio não permitido: ${currentUrl}`);
-          return null;
-        }
-
-        redirectCount++;
-        continue;
-      }
-
-      return { status: result.status, body: result.body };
-    } catch (error) {
-      console.error(`[Proxy] Fetch error:`, error);
-      return null;
-    }
-  }
-
-  console.error(`[Proxy] Too many redirects`);
-  return null;
-}
-
 export async function GET(request: NextRequest) {
   const url = request.nextUrl.searchParams.get('url');
-  const langParam = request.nextUrl.searchParams.get('lang');
   const debug = process.env.DEBUG_PROXY === '1';
-
-  const acceptLanguage =
-    langParam && /^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{1,8})?$/.test(langParam)
-      ? acceptLanguageHeaderFromPrimary(langParam)
-      : undefined;
 
   if (!url) {
     return NextResponse.json({ error: 'URL é obrigatória' }, { status: 400 });
   }
 
   if (!isAuthorizedEmbedRequest(request)) {
-    return NextResponse.json({ error: 'Origem não autorizada' }, { status: 403 });
+    return embedErrorHtml('Origem não autorizada', 403);
   }
 
   if (!isAllowedDomain(url)) {
-    return NextResponse.json({ error: 'Domínio não permitido' }, { status: 403 });
+    return embedErrorHtml('Domínio não permitido', 403);
   }
 
   try {
     // Usar o referer da request ou o host do site
-    const requestReferer = request.headers.get('referer') || request.headers.get('origin');
-    const referer = requestReferer || `https://${request.headers.get('host') || 'localhost'}/`;
+    const upstreamReferer = SUPERFLIX_PLAYER_REFERER;
 
     if (debug) {
-      console.log('[proxy/embed] referer ok');
+      console.log('[proxy/embed] fetching', url);
     }
-    const result = await fetchWithRedirects(url, referer, 5, acceptLanguage, debug);
+    const result = await fetchSuperflixPlayerHtml(url, upstreamReferer);
 
     if (!result) {
-      return NextResponse.json({ error: 'Erro ao acessar o conteúdo' }, { status: 502 });
+      return embedErrorHtml(
+        'Não foi possível contactar a SuperflixAPI. Verifique a ligação à internet ou tente mais tarde.',
+        502
+      );
     }
 
     if (debug) {
-      console.log('[proxy/embed] status', result.status);
+      console.log('[proxy/embed] status', result.status, result.finalUrl);
     }
 
     if (result.status !== 200) {
-      return NextResponse.json(
-        { error: `Servidor retornou status ${result.status}` },
-        { status: result.status }
-      );
+      return embedErrorHtml(`Servidor retornou HTTP ${result.status}`, result.status);
     }
 
     let html = result.body;
 
-    // Determinar a base URL original
-    const urlObj = new URL(url);
+    const urlObj = new URL(result.finalUrl);
     const baseOrigin = urlObj.origin;
 
     // Reescrever todas as URLs para usar o proxy
@@ -569,7 +378,7 @@ export async function GET(request: NextRequest) {
         'Content-Type': 'text/html; charset=utf-8',
         'X-Frame-Options': 'SAMEORIGIN',
         'Content-Security-Policy':
-          "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval' blob:; worker-src * blob:; style-src * 'unsafe-inline'; img-src * data: blob:; media-src * data: blob:; connect-src *; frame-src *; frame-ancestors 'self'",
+          "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; script-src * 'unsafe-inline' 'unsafe-eval' blob:; worker-src * blob:; style-src * 'unsafe-inline'; img-src * data: blob:; media-src * data: blob:; connect-src * 'self' blob: data:; frame-src *; frame-ancestors 'self'; block-all-mixed-content",
         'Cache-Control': 'no-store',
       },
     });
@@ -577,6 +386,18 @@ export async function GET(request: NextRequest) {
     if (debug) {
       console.error('[proxy/embed]', error);
     }
-    return NextResponse.json({ error: 'Erro interno do proxy' }, { status: 500 });
+    return embedErrorHtml('Erro interno do proxy', 500);
   }
+}
+
+function embedErrorHtml(message: string, status: number): NextResponse {
+  const html = `<!DOCTYPE html><html lang="pt"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Player</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#000;color:#f5f5f5;font-family:system-ui,sans-serif;text-align:center;padding:1.5rem}p{max-width:28rem;line-height:1.5;color:#ccc}</style></head><body><p>${message.replace(/</g, '&lt;')}</p></body></html>`;
+  return new NextResponse(html, {
+    status,
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'X-Frame-Options': 'SAMEORIGIN',
+      'Cache-Control': 'no-store',
+    },
+  });
 }

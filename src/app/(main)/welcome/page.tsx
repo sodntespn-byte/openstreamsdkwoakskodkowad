@@ -2,9 +2,9 @@ import type { Metadata } from 'next';
 import { LandingPage } from '@/components/landing/LandingPage';
 
 export const metadata: Metadata = {
-  title: 'Bem-vindo — Superflix',
+  title: 'Bem-vindo — OpenStream',
   description:
-    'Conheça a Superflix: filmes, séries, TV ao vivo e calendário de lançamentos. Entre com a sua conta para aceder ao catálogo completo.',
+    'Conheça a OpenStream: filmes, séries, TV ao vivo e calendário de lançamentos. Entre com sua conta para aceder ao catálogo completo.',
 };
 
 export default function WelcomeRoute() {

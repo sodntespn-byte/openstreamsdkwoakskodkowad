@@ -1,11 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Build standalone: `node .next/standalone/server.js` (Docker / PaaS com Node)
+  // Build otimizado para Node (ex.: SquareCloud, Docker) — `node server.js` na pasta standalone
   output: 'standalone',
-  productionBrowserSourceMaps: false,
   // Marcar pg como pacote externo do servidor para evitar problemas com bundlers
-  serverExternalPackages: ['pg', 'pg-native'],
+  serverExternalPackages: ['pg', 'pg-native', 'sharp'],
   // Desabilitar Turbopack em desenvolvimento para compatibilidade com pg no Windows
   turbopack: {
     rules: {},

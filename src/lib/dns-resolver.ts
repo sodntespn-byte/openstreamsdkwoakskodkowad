@@ -75,14 +75,12 @@ export function fetchWithResolvedDNS(
     followRedirects?: boolean;
     maxRedirects?: number;
     referer?: string;
-    /** Cabeçalho Accept-Language completo (ex.: do proxy conforme idioma do utilizador). */
-    acceptLanguage?: string;
+    accept?: string;
+    secFetchDest?: string;
   } = {}
 ): Promise<{ status: number; body: string; headers: Record<string, string | string[] | undefined>; redirect?: string }> {
-  const { followRedirects = false, referer } = options;
-  const acceptLanguage =
-    options.acceptLanguage ||
-    'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7';
+  const { followRedirects = false, referer, accept, secFetchDest } = options;
+  const ref = referer || 'https://superflix.app/';
 
   return new Promise((resolve, reject) => {
     const urlObj = new URL(url);
@@ -95,18 +93,24 @@ export function fetchWithResolvedDNS(
       headers: {
         Host: urlObj.hostname,
         'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': acceptLanguage,
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+        Accept:
+          accept ||
+          'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
         'Accept-Encoding': 'gzip, deflate, br',
-        // Headers que indicam que está sendo carregado em um iframe
-        'Sec-Fetch-Dest': 'iframe',
-        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Dest': secFetchDest || 'iframe',
+        'Sec-Fetch-Mode': secFetchDest === 'empty' ? 'cors' : 'navigate',
         'Sec-Fetch-Site': 'cross-site',
-        'Sec-Fetch-User': '?1',
-        // Referer do site que está embedando
-        Referer: referer || 'https://superflix.app/',
-        Origin: referer ? new URL(referer).origin : 'https://superflix.app',
+        ...(secFetchDest !== 'empty' ? { 'Sec-Fetch-User': '?1' } : {}),
+        'Sec-Ch-Ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+        'Sec-Ch-Ua-Mobile': '?0',
+        'Sec-Ch-Ua-Platform': '"Windows"',
+        'Upgrade-Insecure-Requests': '1',
+        'Cache-Control': 'max-age=0',
+        Referer: ref,
+        Origin: new URL(ref).origin,
+        Connection: 'keep-alive',
       },
       rejectUnauthorized: false,
       servername: urlObj.hostname,

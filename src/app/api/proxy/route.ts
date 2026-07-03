@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isSuperflixEmbedHost } from '@/lib/constants';
 
-// Domínios permitidos para proxy (segurança)
 const ALLOWED_DOMAINS = [
-  'superflixapi.run',
-  'superflixapi.top',
   'embedtv.best',
   'www1.embedtv.best',
   'image.tmdb.org',
@@ -11,10 +9,9 @@ const ALLOWED_DOMAINS = [
 
 function isAllowedDomain(url: string): boolean {
   try {
-    const urlObj = new URL(url);
-    return ALLOWED_DOMAINS.some(domain =>
-      urlObj.hostname === domain || urlObj.hostname.endsWith('.' + domain)
-    );
+    const host = new URL(url).hostname;
+    if (isSuperflixEmbedHost(host)) return true;
+    return ALLOWED_DOMAINS.some((domain) => host === domain || host.endsWith(`.${domain}`));
   } catch {
     return false;
   }

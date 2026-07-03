@@ -3,8 +3,45 @@ export const TMDB_API_KEY = process.env.NEXT_PUBLIC_TMDB_API_KEY || '';
 export const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 export const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
 
-// SuperflixAPI
-export const SUPERFLIX_API_URL = 'https://superflixapi.cv';
+// SuperflixAPI (override em NEXT_PUBLIC_SUPERFLIX_API_URL)
+export const SUPERFLIX_API_URL =
+  process.env.NEXT_PUBLIC_SUPERFLIX_API_URL || 'https://superflixapi.lifestyle';
+
+export const SUPERFLIX_API_MIRRORS = [
+  SUPERFLIX_API_URL,
+  'https://superflixapi.lifestyle',
+  'https://superflixapi.best',
+  'https://superflixapi.cv',
+  'https://superflixapi.run',
+  'https://superflixapi.top',
+  'https://superflixapi.buzz',
+  'https://superflixapi.bond',
+].filter((v, i, a) => a.indexOf(v) === i);
+
+/** Hostnames do player SuperFlixAPI (embed/HLS) — só vídeos, não sala VM. */
+export const SUPERFLIX_EMBED_HOSTS = [
+  'superflixapi.lifestyle',
+  'superflixapi.best',
+  'superflixapi.cv',
+  'superflixapi.run',
+  'superflixapi.buzz',
+  'superflixapi.top',
+  'superflixapi.bond',
+  'cdn.superflixapi.best',
+  'stream.superflixapi.best',
+  'cdn.superflixapi.cv',
+  'stream.superflixapi.cv',
+  'cdn.superflixapi.run',
+  'stream.superflixapi.run',
+] as const;
+
+export function isSuperflixEmbedHost(hostname: string): boolean {
+  return SUPERFLIX_EMBED_HOSTS.some((d) => hostname === d || hostname.endsWith(`.${d}`));
+}
+
+/** Página inicial do PC virtual (sala) — separado da API de filmes. */
+export const SALA_DEFAULT_START_URL =
+  process.env.NEXT_PUBLIC_SALA_START_URL || 'https://www.google.com';
 
 // Image sizes
 export const IMAGE_SIZES = {
@@ -41,8 +78,6 @@ export const STORAGE_KEYS = {
   favorites: 'superflix_favorites',
   /** Perfil de visionamento ativo (JSON: { userId, profileId }) */
   activeProfile: 'openstream_active_profile',
-  /** Preferências do player: JSON { mode: 'auto'|'manual', manualProvider?: ... } */
-  playerPrefs: 'superflix_player_prefs',
 };
 
 // Media types

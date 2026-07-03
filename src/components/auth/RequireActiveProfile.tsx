@@ -16,14 +16,12 @@ export function RequireActiveProfile({ children }: { children: React.ReactNode }
   useLayoutEffect(() => {
     if (!isHydrated || authLoading) return;
     if (isAuthenticated && activeProfileId == null) {
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('redirectAfterProfile', window.location.pathname + window.location.search);
+      }
       router.replace('/profiles');
     }
   }, [isHydrated, authLoading, isAuthenticated, activeProfileId, router]);
-
-  /** Visitantes: mostrar já a landing / marketing sem esperar hidratação do perfil. */
-  if (!authLoading && !isAuthenticated) {
-    return <>{children}</>;
-  }
 
   if (!isHydrated || authLoading) {
     return (
@@ -32,6 +30,10 @@ export function RequireActiveProfile({ children }: { children: React.ReactNode }
         <p className="text-sm text-[var(--text-secondary)]">A carregar…</p>
       </div>
     );
+  }
+
+  if (!isAuthenticated) {
+    return <>{children}</>;
   }
 
   if (activeProfileId == null) {

@@ -74,7 +74,6 @@ test-*.ts
 *.p12
 *.key
 *.crt
-superflix-squarecloud.zip
 
 # Temporary files
 tmp/

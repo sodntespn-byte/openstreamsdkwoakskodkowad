@@ -7,7 +7,7 @@ import { OpenStreamLogo } from '@/components/branding/OpenStreamLogo';
 export function Footer() {
   const currentYear = new Date().getFullYear();
   const { user } = useAuth();
-  const homeHref = '/';
+  const homeHref = user ? '/' : '/welcome';
 
   const links = {
     navigation: [
@@ -32,7 +32,7 @@ export function Footer() {
           <div className="md:col-span-2">
             <OpenStreamLogo href={homeHref} className="mb-4 inline-block text-2xl" />
             <p className="text-[var(--text-secondary)] text-sm max-w-md">
-              Sua plataforma de streaming favorita. Assista filmes, séries e animes com a Superflix.
+              Sua plataforma de streaming favorita. Assista filmes, séries e animes com a OpenStream.
             </p>
           </div>
 
@@ -74,7 +74,7 @@ export function Footer() {
         {/* Copyright */}
         <div className="mt-12 pt-8 border-t border-[var(--border-color)] flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-sm text-[var(--text-secondary)]">
-            © {currentYear} Superflix. Todos os direitos reservados.
+            © {currentYear} OpenStream. Todos os direitos reservados.
           </p>
           <p className="text-xs text-[var(--text-secondary)]">
             Este site não armazena nenhum conteúdo. Todos os vídeos são hospedados por terceiros.

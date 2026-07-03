@@ -95,7 +95,7 @@ export default function PersonPage() {
                 src={
                   person.profile_path
                     ? tmdb.getImageUrl(person.profile_path, 'h632')
-                    : '/icons/icon-192x192.png'
+                    : '/placeholder-poster.jpg'
                 }
                 alt={person.name}
                 width={300}
@@ -174,7 +174,7 @@ export default function PersonPage() {
                         src={
                           item.poster_path
                             ? tmdb.getImageUrl(item.poster_path, 'w342')
-                            : '/icons/icon-192x192.png'
+                            : '/placeholder-poster.jpg'
                         }
                         alt={title}
                         className="w-full h-full object-cover"

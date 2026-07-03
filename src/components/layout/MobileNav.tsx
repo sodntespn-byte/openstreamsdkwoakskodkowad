@@ -3,14 +3,15 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { Home, Film, Tv, Radio, User } from 'lucide-react';
+import { Home, Film, Tv, Radio, User, MonitorPlay } from 'lucide-react';
 
 import { useAuth } from '@/context/AuthContext';
+import { FEATURES } from '@/lib/features';
 
 export function MobileNav() {
   const pathname = usePathname();
   const { user } = useAuth();
-  const homeHref = '/';
+  const homeHref = user ? '/' : '/welcome';
 
   const navItems = [
     {
@@ -37,6 +38,16 @@ export function MobileNav() {
       active: pathname === '/tv',
       icon: Radio,
     },
+    ...(FEATURES.hyperbeam
+      ? [
+          {
+            href: '/sala',
+            label: 'PC',
+            active: pathname === '/sala',
+            icon: MonitorPlay,
+          },
+        ]
+      : []),
     {
       href: '/profile',
       label: 'Perfil',

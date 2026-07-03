@@ -68,6 +68,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(false);
   }, []);
 
+  // Sincronizar avatar e dados da conta com o servidor (ex.: foto guardada noutro dispositivo)
+  useEffect(() => {
+    if (!token || isLoading) return;
+    void (async () => {
+      try {
+        const response = await fetch('/api/auth/me', {
+          credentials: 'include',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) return;
+        const data = (await response.json()) as Record<string, unknown>;
+        const fresh = mapApiUser(data);
+        setUser(fresh);
+        localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(fresh));
+      } catch {
+        /* manter cache local */
+      }
+    })();
+  }, [token, isLoading]);
+
   const saveAuth = useCallback((newToken: string, newUser: User) => {
     setToken(newToken);
     setUser(newUser);
@@ -145,6 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const response = await fetch('/api/auth/profile', {
       method: 'PUT',
+      credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,

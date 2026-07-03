@@ -25,7 +25,7 @@ export default function DMCAPage() {
             <div>
               <h3 className="text-lg font-semibold text-yellow-500 mb-2">Aviso Importante</h3>
               <p className="text-[var(--text-secondary)]">
-                O Superflix respeita os direitos de propriedade intelectual de terceiros.
+                O OpenStream respeita os direitos de propriedade intelectual de terceiros.
                 Não hospedamos nenhum conteúdo protegido por direitos autorais em nossos servidores.
                 Funcionamos apenas como um agregador de links para conteúdo hospedado por terceiros.
               </p>
@@ -45,7 +45,7 @@ export default function DMCAPage() {
           <section className="space-y-4">
             <h2 className="text-2xl font-semibold text-white">Nossa Posição</h2>
             <p>
-              O Superflix opera como um serviço de agregação de links. Não armazenamos,
+              O OpenStream opera como um serviço de agregação de links. Não armazenamos,
               hospedamos ou distribuímos qualquer conteúdo de mídia em nossos servidores.
               Todos os vídeos e streams são hospedados por serviços de terceiros.
             </p>

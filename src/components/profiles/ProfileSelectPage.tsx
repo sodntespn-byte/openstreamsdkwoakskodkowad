@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import Image from 'next/image';
+import { Pencil, Plus, Trash2, ImageIcon } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useProfile } from '@/context/ProfileContext';
 import { useToast } from '@/context/ToastContext';
@@ -13,6 +14,7 @@ import { Input } from '@/components/ui/Input';
 import { cn } from '@/lib/utils';
 import type { SerializedViewerProfile } from '@/lib/viewerProfileUtils';
 import { AVATAR_GRADIENT_IDS, MAX_VIEWER_PROFILES } from '@/lib/viewerProfileUtils';
+import { resizeAvatarFile } from '@/lib/avatarImage';
 
 const AVATAR_BG: Record<string, string> = {
   'gradient-1': 'bg-gradient-to-br from-violet-500 via-purple-600 to-indigo-900',
@@ -25,9 +27,28 @@ const AVATAR_BG: Record<string, string> = {
   'gradient-8': 'bg-gradient-to-br from-neutral-400 via-zinc-600 to-neutral-900',
 };
 
-function ProfileAvatar({ name, avatarId, className }: { name: string; avatarId: string; className?: string }) {
+function ProfileAvatar({
+  name,
+  avatarId,
+  avatarUrl,
+  className,
+}: {
+  name: string;
+  avatarId: string;
+  avatarUrl?: string | null;
+  className?: string;
+}) {
   const initial = (name.trim()[0] || '?').toUpperCase();
   const bg = AVATAR_BG[avatarId] || AVATAR_BG['gradient-1'];
+
+  if (avatarUrl) {
+    return (
+      <div className={cn('relative aspect-square w-full overflow-hidden rounded-md', className)}>
+        <Image src={avatarUrl} alt={name} fill className="object-cover" unoptimized sizes="200px" />
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(
@@ -52,11 +73,12 @@ export function ProfileSelectPage() {
   const [editing, setEditing] = useState<SerializedViewerProfile | 'new' | null>(null);
   const [formName, setFormName] = useState('');
   const [formAvatar, setFormAvatar] = useState<string>('gradient-1');
+  const [formAvatarUrl, setFormAvatarUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
-      router.replace('/');
+      router.replace('/welcome');
     }
   }, [authLoading, user, router]);
 
@@ -68,13 +90,15 @@ export function ProfileSelectPage() {
     setEditing('new');
     setFormName('');
     setFormAvatar('gradient-1');
+    setFormAvatarUrl(user?.avatarUrl ?? null);
     setModalOpen(true);
-  }, [profiles.length, showToast]);
+  }, [profiles.length, showToast, user?.avatarUrl]);
 
   const openEdit = useCallback((p: SerializedViewerProfile) => {
     setEditing(p);
     setFormName(p.name);
     setFormAvatar(p.avatarId);
+    setFormAvatarUrl(p.avatarUrl ?? null);
     setModalOpen(true);
   }, []);
 
@@ -99,7 +123,11 @@ export function ProfileSelectPage() {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ name: trimmed, avatarId: formAvatar }),
+          body: JSON.stringify({
+            name: trimmed,
+            avatarId: formAvatar,
+            avatarUrl: formAvatarUrl,
+          }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Erro ao criar');
@@ -111,7 +139,11 @@ export function ProfileSelectPage() {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ name: trimmed, avatarId: formAvatar }),
+          body: JSON.stringify({
+            name: trimmed,
+            avatarId: formAvatar,
+            avatarUrl: formAvatarUrl,
+          }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Erro ao guardar');
@@ -145,7 +177,14 @@ export function ProfileSelectPage() {
 
   const enterWithProfile = (p: SerializedViewerProfile) => {
     selectProfile(p.id);
-    router.push('/');
+    // Check if there's a stored redirect URL
+    const redirectUrl = typeof window !== 'undefined' ? sessionStorage.getItem('redirectAfterProfile') : null;
+    if (redirectUrl) {
+      sessionStorage.removeItem('redirectAfterProfile');
+      router.push(redirectUrl);
+    } else {
+      router.push('/');
+    }
   };
 
   if (!user) {
@@ -173,7 +212,7 @@ export function ProfileSelectPage() {
               type="button"
               onClick={() => {
                 void logout();
-                router.push('/');
+                router.push('/welcome');
               }}
               className="rounded-lg px-3 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-white/10 hover:text-[var(--accent-primary)] touch-manipulation min-h-[44px] sm:min-h-0"
             >
@@ -214,7 +253,7 @@ export function ProfileSelectPage() {
                     )}
                   >
                     <div className="relative overflow-hidden rounded-md ring-1 ring-white/10 transition-shadow group-hover:ring-[var(--accent-primary)]/50 group-hover:shadow-[0_12px_40px_rgba(0,0,0,0.45)]">
-                      <ProfileAvatar name={p.name} avatarId={p.avatarId} />
+                      <ProfileAvatar name={p.name} avatarId={p.avatarId} avatarUrl={p.avatarUrl} />
                       {manageMode && (
                         <span className="absolute inset-0 flex items-center justify-center bg-black/55 opacity-0 transition-opacity group-hover:opacity-100">
                           <Pencil className="h-8 w-8 text-[var(--accent-primary)]" aria-hidden />
@@ -278,22 +317,80 @@ export function ProfileSelectPage() {
         <h2 className="pr-10 text-xl font-semibold text-[var(--text-primary)]">
           {editing === 'new' ? 'Novo perfil' : 'Editar perfil'}
         </h2>
-        <p className="mt-1 text-sm text-[var(--text-secondary)]">Nome e aspeto do avatar</p>
+        <p className="mt-1 text-sm text-[var(--text-secondary)]">Nome, foto ou cor do avatar</p>
 
         <div className="mt-6 space-y-4">
           <Input label="Nome do perfil" value={formName} onChange={(e) => setFormName(e.target.value)} maxLength={100} />
+
           <div>
-            <p className="mb-2 text-sm font-medium text-[var(--text-secondary)]">Cor do avatar</p>
+            <p className="mb-2 text-sm font-medium text-[var(--text-secondary)]">Foto do perfil</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative h-20 w-20 overflow-hidden rounded-md ring-1 ring-white/15">
+                {formAvatarUrl ? (
+                  <Image src={formAvatarUrl} alt="" fill className="object-cover" unoptimized />
+                ) : (
+                  <ProfileAvatar name={formName || '?'} avatarId={formAvatar} className="!rounded-md" />
+                )}
+              </div>
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--border-color)] px-3 py-2 text-sm text-[var(--accent-primary)] hover:border-[var(--accent-primary)]">
+                <ImageIcon size={18} />
+                Carregar foto
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = '';
+                    if (!file?.type.startsWith('image/')) return;
+                    try {
+                      const dataUrl = await resizeAvatarFile(file);
+                      setFormAvatarUrl(dataUrl);
+                      showToast('Foto pronta — guarde o perfil', 'success');
+                    } catch (err: unknown) {
+                      showToast(err instanceof Error ? err.message : 'Erro na imagem', 'error');
+                    }
+                  }}
+                />
+              </label>
+              {user?.avatarUrl && (
+                <button
+                  type="button"
+                  className="text-sm text-[var(--text-secondary)] hover:text-[var(--accent-primary)]"
+                  onClick={() => setFormAvatarUrl(user.avatarUrl ?? null)}
+                >
+                  Usar foto da conta
+                </button>
+              )}
+              {formAvatarUrl && (
+                <button
+                  type="button"
+                  className="text-sm text-red-400 hover:text-red-300"
+                  onClick={() => setFormAvatarUrl(null)}
+                >
+                  Remover foto
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-2 text-sm font-medium text-[var(--text-secondary)]">Cor (se não usar foto)</p>
             <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
               {AVATAR_GRADIENT_IDS.map((id) => (
                 <button
                   key={id}
                   type="button"
-                  onClick={() => setFormAvatar(id)}
+                  onClick={() => {
+                    setFormAvatar(id);
+                    setFormAvatarUrl(null);
+                  }}
                   className={cn(
                     'aspect-square rounded-md ring-2 ring-offset-2 ring-offset-[var(--bg-secondary)] transition-transform hover:scale-105',
                     AVATAR_BG[id],
-                    formAvatar === id ? 'ring-[var(--accent-primary)]' : 'ring-transparent'
+                    formAvatar === id && !formAvatarUrl
+                      ? 'ring-[var(--accent-primary)]'
+                      : 'ring-transparent'
                   )}
                   aria-label={id}
                 />

@@ -25,6 +25,7 @@ export function serializeViewerProfile(r: ViewerProfileRow) {
     userId: r.user_id,
     name: r.name,
     avatarId: r.avatar_id,
+    avatarUrl: r.avatar_url ?? null,
     sortOrder: r.sort_order,
     createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
     updatedAt: r.updated_at instanceof Date ? r.updated_at.toISOString() : String(r.updated_at),

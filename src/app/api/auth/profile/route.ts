@@ -26,8 +26,16 @@ export async function PUT(request: NextRequest) {
     if (avatarRaw && avatarRaw.startsWith('data:image/')) {
       try {
         avatarRaw = await stripImageDataUrlMetadata(avatarRaw);
-      } catch {
-        return NextResponse.json({ error: 'Imagem inválida ou demasiado grande' }, { status: 400 });
+      } catch (stripErr) {
+        if (!/^data:image\/jpe?g;base64,/i.test(avatarRaw)) {
+          return NextResponse.json({ error: 'Imagem inválida ou demasiado grande' }, { status: 400 });
+        }
+        if (avatarRaw.length > 500_000) {
+          return NextResponse.json({ error: 'Imagem demasiado grande' }, { status: 400 });
+        }
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[auth/profile] stripImage fallback:', stripErr);
+        }
       }
     }
     const avatar_url = avatarRaw;
@@ -75,6 +83,11 @@ export async function PUT(request: NextRequest) {
         u.email = emailIn;
       }
       u.updated_at = new Date();
+      if (avatar_url !== undefined && u.avatar_url) {
+        for (const p of inMemoryData.viewerProfiles) {
+          if (p.user_id === u.id) p.avatar_url = u.avatar_url;
+        }
+      }
 
       return NextResponse.json({
         message: 'Perfil atualizado com sucesso',
@@ -135,6 +148,15 @@ export async function PUT(request: NextRequest) {
       WHERE id = ${authUser.userId}
       RETURNING id, email, name, is_admin, avatar_url, theme
     `;
+
+    if (avatar_url !== undefined && nextAvatar) {
+      await ensureDatabaseSchema();
+      await sql`
+        UPDATE viewer_profiles
+        SET avatar_url = ${nextAvatar}, updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ${authUser.userId}
+      `;
+    }
 
     const user = result.rows[0] as UserRow;
 

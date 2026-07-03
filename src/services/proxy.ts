@@ -1,3 +1,5 @@
+import { SUPERFLIX_API_URL } from '@/lib/constants';
+
 /**
  * Serviço de Proxy para contornar bloqueios de rede
  * Usa o DNS do Cloudflare (1.1.1.1) através do servidor
@@ -33,7 +35,7 @@ export function getEmbedProxyUrl(url: string): string {
  * Séries: usam TMDB ID
  */
 export function getPlayerUrl(type: 'movie' | 'tv', id: string | number, season?: number, episode?: number): string {
-  const baseUrl = 'https://superflixapi.cv';
+  const baseUrl = SUPERFLIX_API_URL.replace(/\/$/, '');
 
   let playerUrl: string;
   if (type === 'movie') {

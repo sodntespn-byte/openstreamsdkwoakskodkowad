@@ -1,19 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveWithCloudflare, fetchWithResolvedDNS } from '@/lib/dns-resolver';
+import { isSuperflixEmbedHost } from '@/lib/constants';
+import { SUPERFLIX_PLAYER_REFERER } from '@/lib/superflixFetch';
 
-// Dominios permitidos para assets
+const EMBEDTV_ASSET = ['embedtv.best', 'www1.embedtv.best'];
+
+// Dominios permitidos para assets (além de SuperFlix via isSuperflixEmbedHost)
 const ALLOWED_ASSET_DOMAINS = [
-  'superflixapi.cv',
-  'superflixapi.run',
-  'superflixapi.buzz',
-  'superflixapi.top',
   'embedtv.best',
   'www1.embedtv.best',
-  // Subdominios de stream
-  'cdn.superflixapi.cv',
-  'stream.superflixapi.cv',
-  'cdn.superflixapi.run',
-  'stream.superflixapi.run',
   'cdn.embedtv.best',
   'stream.embedtv.best',
   // CDNs comuns usados pelos players
@@ -28,9 +23,10 @@ const ALLOWED_ASSET_DOMAINS = [
 
 function isAllowedDomain(url: string): boolean {
   try {
-    const urlObj = new URL(url);
+    const host = new URL(url).hostname;
+    if (isSuperflixEmbedHost(host)) return true;
     return ALLOWED_ASSET_DOMAINS.some(
-      (domain) => urlObj.hostname === domain || urlObj.hostname.endsWith('.' + domain)
+      (domain) => host === domain || host.endsWith(`.${domain}`)
     );
   } catch {
     return false;
@@ -48,6 +44,21 @@ export async function GET(request: NextRequest) {
   if (!url) {
     console.log('[Asset Proxy] ERRO: URL não fornecida');
     return NextResponse.json({ error: 'URL é obrigatória' }, { status: 400 });
+  }
+
+  // Bloquear requisições para Cloudflare (Turnstile, RUM, challenges)
+  try {
+    const urlObj = new URL(url);
+    if (urlObj.hostname.includes('cloudflare.com') || 
+        urlObj.hostname.includes('cdn-cgi') ||
+        urlObj.pathname.includes('/cdn-cgi/') ||
+        urlObj.pathname.includes('/challenges/') ||
+        urlObj.pathname.includes('/turnstile/')) {
+      console.log('[Asset Proxy] Bloqueando requisição para Cloudflare:', url);
+      return NextResponse.json({ error: 'Cloudflare requests blocked' }, { status: 403 });
+    }
+  } catch {
+    // URL inválida, continua processamento normal
   }
 
   // Para CDNs públicos, tentar fetch normal primeiro
@@ -101,7 +112,14 @@ export async function GET(request: NextRequest) {
 
     console.log(`[Asset Proxy] DNS resolvido: ${hostname} -> ${resolvedIP}`);
 
-    const result = await fetchWithResolvedDNS(url, resolvedIP);
+    const isPlayerApi = urlObj.pathname.startsWith('/player/');
+    const result = await fetchWithResolvedDNS(url, resolvedIP, {
+      referer: SUPERFLIX_PLAYER_REFERER,
+      accept: isPlayerApi
+        ? 'application/json, text/plain, */*'
+        : 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+      secFetchDest: isPlayerApi ? 'empty' : 'iframe',
+    });
     console.log('[Asset Proxy] Resposta recebida - Status:', result.status);
 
     // Seguir redirects se necessário
@@ -126,7 +144,7 @@ export async function GET(request: NextRequest) {
       else if (path.endsWith('.css')) contentType = 'text/css';
       else if (path.endsWith('.m3u8')) contentType = 'application/vnd.apple.mpegurl';
       else if (path.endsWith('.ts')) contentType = 'video/mp2t';
-      else if (path.endsWith('.json')) contentType = 'application/json';
+      else if (isPlayerApi || path.endsWith('.json')) contentType = 'application/json';
       else if (path.endsWith('.png')) contentType = 'image/png';
       else if (path.endsWith('.jpg') || path.endsWith('.jpeg')) contentType = 'image/jpeg';
       else if (path.endsWith('.gif')) contentType = 'image/gif';

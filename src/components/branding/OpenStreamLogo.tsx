@@ -9,7 +9,7 @@ type OpenStreamLogoProps = {
   href?: string | null;
 };
 
-export function OpenStreamLogo({ className, href = '/' }: OpenStreamLogoProps) {
+export function OpenStreamLogo({ className, href = '/welcome' }: OpenStreamLogoProps) {
   const label = (
     <span
       className={cn(
@@ -17,7 +17,7 @@ export function OpenStreamLogo({ className, href = '/' }: OpenStreamLogoProps) {
         className
       )}
     >
-      Superflix
+      OpenStream
     </span>
   );
 

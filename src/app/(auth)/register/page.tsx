@@ -77,7 +77,7 @@ export default function RegisterPage() {
   return (
     <div>
       <div className="mb-8 text-center">
-        <Link href="/" className="inline-flex flex-col items-center gap-2">
+        <Link href="/welcome" className="inline-flex flex-col items-center gap-2">
           <OpenStreamLogo href={null} className="text-3xl sm:text-4xl" />
           <span className="text-sm font-medium text-[var(--text-secondary)]">
             Criar conta

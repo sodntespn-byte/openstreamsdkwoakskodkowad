@@ -1,16 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams, useSearchParams, useRouter } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { MovieRatingsAndCommunity } from '@/components/watch/MovieRatingsAndCommunity';
 import { tmdb } from '@/services/tmdb';
-import { VideoPlayer } from '@/components/player/VideoPlayer';
+import { WatchCinemaExperience } from '@/components/watch/WatchCinemaExperience';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
 import { Select } from '@/components/ui/Select';
 import { CategoryRow } from '@/components/content/CategoryRow';
 import { SkeletonPlayer } from '@/components/ui/Skeleton';
@@ -25,7 +24,6 @@ import {
   Share2,
   ChevronLeft,
   ChevronRight,
-  ArrowLeft,
   X,
 } from 'lucide-react';
 import type { ContentDetails, Season, Episode, Content } from '@/types/content';
@@ -33,7 +31,6 @@ import type { ContentDetails, Season, Episode, Content } from '@/types/content';
 export default function WatchPage() {
   const params = useParams();
   const searchParams = useSearchParams();
-  const router = useRouter();
   const { user } = useAuth();
   const { showToast } = useToast();
   const type = params.type as 'movie' | 'tv';
@@ -48,10 +45,9 @@ export default function WatchPage() {
   const [similar, setSimilar] = useState<Content[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [imdbId, setImdbId] = useState<string | null>(null);
-  const [playbackQuality, setPlaybackQuality] = useState<'SD' | 'HD' | 'Full HD' | '4K UHD'>('HD');
   const [isFavorite, setIsFavorite] = useState(false);
   const [favoriteBusy, setFavoriteBusy] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [cinemaOpen, setCinemaOpen] = useState(false);
   const [trailerKey, setTrailerKey] = useState<string | null>(null);
   const [showTrailer, setShowTrailer] = useState(false);
 
@@ -89,13 +85,6 @@ export default function WatchPage() {
   }, [selectedSeason, content]);
 
   useEffect(() => {
-    if (content) {
-      saveToHistory(content, 0.1);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- regravar meta ao mudar qualidade
-  }, [playbackQuality]);
-
-  useEffect(() => {
     // Update URL when season/episode changes for TV
     if (type === 'tv') {
       const newUrl = `/watch/tv/${id}?s=${selectedSeason}&e=${selectedEpisode}`;
@@ -130,11 +119,16 @@ export default function WatchPage() {
         }
       }
 
-      if (details.external_ids?.imdb_id) {
-        setImdbId(details.external_ids.imdb_id);
-      } else {
-        setImdbId(null);
+      let resolvedImdb = details.external_ids?.imdb_id ?? null;
+      if (type === 'movie' && !resolvedImdb) {
+        try {
+          const ext = await tmdb.getExternalIds('movie', id);
+          resolvedImdb = ext.imdb_id ?? null;
+        } catch {
+          resolvedImdb = null;
+        }
       }
+      setImdbId(resolvedImdb);
 
       // Set initial season
       if (type === 'tv' && details.seasons) {
@@ -184,7 +178,6 @@ export default function WatchPage() {
       progress,
       imdb_id: ext ?? null,
       vote_average: contentData.vote_average ?? null,
-      max_quality: playbackQuality,
     });
   };
 
@@ -245,7 +238,6 @@ export default function WatchPage() {
         episode: type === 'tv' ? selectedEpisode : null,
         imdb_id: content.external_ids?.imdb_id ?? imdbId,
         vote_average: content.vote_average ?? null,
-        max_quality: playbackQuality,
       });
     }
   };
@@ -310,13 +302,6 @@ export default function WatchPage() {
   const runtime = content.runtime;
   const genres = content.genres || [];
 
-  const qualityOptions = [
-    { value: 'SD', label: 'SD' },
-    { value: 'HD', label: 'HD' },
-    { value: 'Full HD', label: 'Full HD' },
-    { value: '4K UHD', label: '4K UHD' },
-  ];
-
   const seasonOptions =
     content.seasons
       ?.filter((s: Season) => s.season_number > 0)
@@ -332,69 +317,26 @@ export default function WatchPage() {
   const hasPrevEpisode =
     episodes.findIndex((ep) => ep.episode_number === selectedEpisode) > 0;
 
-  // Se estiver reproduzindo, mostrar o player em tela cheia
-  if (isPlaying) {
-    return (
-      <div className="min-h-screen bg-black flex flex-col lg:flex-row">
-        <div className="relative flex-1 lg:min-w-0">
-          <VideoPlayer
-            mediaType={type}
-            tmdbId={id}
-            imdbId={imdbId}
-            season={type === 'tv' ? selectedSeason : undefined}
-            episode={type === 'tv' ? selectedEpisode : undefined}
-            title={title}
-          />
-
-          <button
-            onClick={() => setIsPlaying(false)}
-            className="absolute top-4 left-4 z-30 flex items-center gap-2 px-4 py-2 bg-black/50 hover:bg-black/70 rounded-full text-white transition-colors touch-manipulation"
-          >
-            <ArrowLeft size={20} />
-            <span className="hidden sm:inline">Voltar</span>
-          </button>
-
-          {type === 'tv' && episodes.length > 0 && (
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-4 z-20 max-w-[95vw] flex-wrap justify-center">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={goToPreviousEpisode}
-                disabled={!hasPrevEpisode}
-                className="opacity-70 hover:opacity-100"
-              >
-                <ChevronLeft size={20} />
-                Anterior
-              </Button>
-              <span className="text-white text-sm bg-black/50 px-3 py-1 rounded">
-                S{selectedSeason}:E{selectedEpisode}
-              </span>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={goToNextEpisode}
-                disabled={!hasNextEpisode}
-                className="opacity-70 hover:opacity-100"
-              >
-                Próximo
-                <ChevronRight size={20} />
-              </Button>
-            </div>
-          )}
-        </div>
-
-        <aside className="w-full lg:w-[min(420px,40vw)] lg:max-h-screen lg:overflow-y-auto border-t lg:border-t-0 lg:border-l border-white/10 p-3 bg-zinc-950/98 z-20 shrink-0">
-          <MovieRatingsAndCommunity tmdbId={id} mediaType={type} imdbId={imdbId} compact />
-        </aside>
-      </div>
-    );
-  }
-
-  // Tela de apresentação
   return (
-    <div className="min-h-screen bg-black">
+    <div className={cn('min-h-screen bg-black', cinemaOpen && 'watch-page-cinema-active')}>
+      <WatchCinemaExperience
+        open={cinemaOpen}
+        onClose={() => setCinemaOpen(false)}
+        mediaType={type}
+        tmdbId={id}
+        imdbId={imdbId}
+        season={type === 'tv' ? selectedSeason : undefined}
+        episode={type === 'tv' ? selectedEpisode : undefined}
+        title={title}
+        showEpisodeNav={type === 'tv' && episodes.length > 0}
+        hasPrevEpisode={hasPrevEpisode}
+        hasNextEpisode={hasNextEpisode}
+        onPrevEpisode={goToPreviousEpisode}
+        onNextEpisode={goToNextEpisode}
+        episodeLabel={`S${selectedSeason}:E${selectedEpisode}`}
+      />
       {/* Hero com Backdrop */}
-      <div className="relative min-h-[100svh] md:min-h-[85vh]">
+      <div className="watch-page-cinema-hide relative min-h-[100svh] md:min-h-[85vh]">
         {/* Backdrop Image */}
         {backdropUrl && (
           <div className="absolute inset-0">
@@ -410,15 +352,6 @@ export default function WatchPage() {
             <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/40 to-transparent md:from-black/80" />
           </div>
         )}
-
-        {/* Botao Voltar */}
-        <button
-          onClick={() => router.back()}
-          className="absolute top-4 left-4 md:top-6 md:left-6 z-30 flex items-center gap-2 p-3 md:px-4 md:py-2 bg-black/50 hover:bg-black/70 rounded-full text-white transition-colors"
-        >
-          <ArrowLeft size={20} />
-          <span className="hidden sm:inline">Voltar</span>
-        </button>
 
         {/* Conteudo do Hero */}
         <div className="absolute inset-0 flex items-end">
@@ -493,22 +426,6 @@ export default function WatchPage() {
                   </div>
                 )}
 
-                <div className="flex justify-center md:justify-start mb-4 md:mb-6">
-                  <div className="w-full max-w-xs">
-                    <p className="text-[10px] uppercase tracking-wider text-white/50 mb-1">
-                      Qualidade (histórico)
-                    </p>
-                    <Select
-                      options={qualityOptions}
-                      value={playbackQuality}
-                      onChange={(e) =>
-                        setPlaybackQuality(e.target.value as typeof playbackQuality)
-                      }
-                      className="w-full bg-black/40 border-white/20 text-white"
-                    />
-                  </div>
-                </div>
-
                 {/* Sinopse (resumida) - Esconder no mobile pequeno */}
                 {content.overview && (
                   <p className="hidden sm:block text-gray-300 text-sm md:text-base leading-relaxed mb-4 md:mb-6 max-w-2xl line-clamp-2 md:line-clamp-3">
@@ -520,7 +437,7 @@ export default function WatchPage() {
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 md:gap-4">
                   {/* Botao PLAY Principal */}
                   <button
-                    onClick={() => setIsPlaying(true)}
+                    onClick={() => setCinemaOpen(true)}
                     className="flex items-center justify-center gap-2 md:gap-3 px-6 md:px-8 py-3.5 md:py-4 bg-white text-black font-bold text-base md:text-lg rounded-xl hover:bg-yellow-200 transition-all transform hover:scale-105 shadow-lg"
                   >
                     <Play size={22} fill="currentColor" />
@@ -603,7 +520,7 @@ export default function WatchPage() {
       )}
 
       {/* Content Info Abaixo */}
-      <div className="bg-[var(--bg-primary)]">
+      <div className="watch-page-cinema-hide bg-[var(--bg-primary)]">
         <div className="container mx-auto px-4 md:px-6 py-8 md:py-12 md:pt-32">
           {/* Sinopse completa */}
           {content.overview && (
@@ -636,7 +553,7 @@ export default function WatchPage() {
                         src={
                           person.profile_path
                             ? tmdb.getImageUrl(person.profile_path, 'w185')
-                            : '/icons/icon-192x192.png'
+                            : '/placeholder-poster.jpg'
                         }
                         alt={person.name}
                         className="w-full h-full object-cover"
@@ -674,7 +591,10 @@ export default function WatchPage() {
                 {episodes.map((ep) => (
                   <button
                     key={ep.id}
-                    onClick={() => handleEpisodeSelect(ep)}
+                    onClick={() => {
+                      handleEpisodeSelect(ep);
+                      setCinemaOpen(true);
+                    }}
                     className={cn(
                       'flex gap-4 p-4 rounded-lg text-left transition-colors',
                       'bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)]',

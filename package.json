@@ -3,15 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "set TURBOPACK=0 && next dev",
+    "dev": "next dev --webpack",
     "dev:turbo": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "db:setup": "node database/setup.js",
-    "zip:deploy": "bash scripts/squarecloud-zip.sh"
+    "db:setup": "node database/setup.js"
   },
   "dependencies": {
+    "@hyperbeam/web": "^0.0.38",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",

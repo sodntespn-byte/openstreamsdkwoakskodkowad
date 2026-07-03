@@ -26,7 +26,7 @@ export default function TermosPage() {
           <section className="space-y-4">
             <h2 className="text-2xl font-semibold text-white">1. Aceitação dos Termos</h2>
             <p>
-              Ao acessar e usar o Superflix, você concorda em cumprir e estar vinculado a estes
+              Ao acessar e usar o OpenStream, você concorda em cumprir e estar vinculado a estes
               Termos de Uso. Se você não concordar com qualquer parte destes termos, não deve
               usar nosso serviço.
             </p>
@@ -35,7 +35,7 @@ export default function TermosPage() {
           <section className="space-y-4">
             <h2 className="text-2xl font-semibold text-white">2. Descrição do Serviço</h2>
             <p>
-              O Superflix é uma plataforma de streaming que agrega links de conteúdo disponível
+              O OpenStream é uma plataforma de streaming que agrega links de conteúdo disponível
               na internet. Não hospedamos, armazenamos ou distribuímos qualquer conteúdo de
               mídia diretamente em nossos servidores.
             </p>
@@ -47,7 +47,7 @@ export default function TermosPage() {
 
           <section className="space-y-4">
             <h2 className="text-2xl font-semibold text-white">3. Uso Permitido</h2>
-            <p>Você concorda em usar o Superflix apenas para fins legais e de acordo com estes Termos. Você não deve:</p>
+            <p>Você concorda em usar o OpenStream apenas para fins legais e de acordo com estes Termos. Você não deve:</p>
             <ul className="list-disc pl-6 space-y-2">
               <li>Usar o serviço de qualquer maneira que viole leis locais, estaduais, nacionais ou internacionais</li>
               <li>Tentar acessar áreas não autorizadas do sistema</li>
@@ -73,8 +73,8 @@ export default function TermosPage() {
           <section className="space-y-4">
             <h2 className="text-2xl font-semibold text-white">5. Propriedade Intelectual</h2>
             <p>
-              O Superflix e seu conteúdo original, recursos e funcionalidades são de propriedade
-              do Superflix e estão protegidos por leis de direitos autorais internacionais.
+              O OpenStream e seu conteúdo original, recursos e funcionalidades são de propriedade
+              do OpenStream e estão protegidos por leis de direitos autorais internacionais.
             </p>
             <p>
               As marcas registradas, logos e nomes de serviços exibidos são propriedade de seus
@@ -85,7 +85,7 @@ export default function TermosPage() {
           <section className="space-y-4">
             <h2 className="text-2xl font-semibold text-white">6. Isenção de Responsabilidade</h2>
             <p>
-              O Superflix é fornecido "como está" e "conforme disponível". Não garantimos que:
+              O OpenStream é fornecido "como está" e "conforme disponível". Não garantimos que:
             </p>
             <ul className="list-disc pl-6 space-y-2">
               <li>O serviço será ininterrupto ou livre de erros</li>
@@ -97,7 +97,7 @@ export default function TermosPage() {
           <section className="space-y-4">
             <h2 className="text-2xl font-semibold text-white">7. Limitação de Responsabilidade</h2>
             <p>
-              Em nenhuma circunstância o Superflix, seus diretores, funcionários ou afiliados
+              Em nenhuma circunstância o OpenStream, seus diretores, funcionários ou afiliados
               serão responsáveis por quaisquer danos indiretos, incidentais, especiais ou
               consequenciais resultantes do uso ou incapacidade de usar o serviço.
             </p>

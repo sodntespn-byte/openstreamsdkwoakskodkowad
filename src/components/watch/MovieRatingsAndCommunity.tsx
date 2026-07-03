@@ -100,7 +100,7 @@ export function MovieRatingsAndCommunity({ tmdbId, mediaType, imdbId, compact }:
           </div>
         )}
         <div className="rounded-xl bg-white/5 px-3 py-2 border border-emerald-500/30">
-          <p className="text-[10px] uppercase tracking-wider text-white/50">Superflix (mistura)</p>
+          <p className="text-[10px] uppercase tracking-wider text-white/50">OpenStream (mistura)</p>
           <p className="text-lg font-bold text-emerald-300 tabular-nums flex items-center gap-1">
             <Star size={16} className="inline shrink-0" />
             {blended != null ? blended.toFixed(1) : '—'}

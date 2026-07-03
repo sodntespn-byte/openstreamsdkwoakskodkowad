@@ -29,7 +29,7 @@ export default function AdminPage() {
   const [dashboard, setDashboard] = useState<AdminDashboard | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [settings, setSettings] = useState<AdminSettings>({
-    site_name: 'Superflix',
+    site_name: 'OpenStream',
     maintenance_mode: false,
   });
   const [isLoading, setIsLoading] = useState(true);

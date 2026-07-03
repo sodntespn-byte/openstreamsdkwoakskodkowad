@@ -1,29 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveWithCloudflare, fetchWithResolvedDNS } from '@/lib/dns-resolver';
 
-// Dominios permitidos para HLS
-const ALLOWED_HLS_DOMAINS = [
+import { isSuperflixEmbedHost } from '@/lib/constants';
+
+const EMBEDTV_HLS = ['embedtv.best', 'www1.embedtv.best'];
+
+const PROXY_DOMAINS = [
+  'superflixapi.lifestyle',
+  'superflixapi.best',
   'superflixapi.cv',
   'superflixapi.run',
   'superflixapi.buzz',
   'superflixapi.top',
-  'embedtv.best',
-  'www1.embedtv.best',
+  'superflixapi.bond',
+  'cdn.superflixapi.best',
+  'stream.superflixapi.best',
   'cdn.superflixapi.cv',
   'stream.superflixapi.cv',
   'cdn.superflixapi.run',
   'stream.superflixapi.run',
+  ...EMBEDTV_HLS,
 ];
-
-// Domínios que devem ter URLs reescritas
-const PROXY_DOMAINS = ALLOWED_HLS_DOMAINS;
 
 function isAllowedDomain(url: string): boolean {
   try {
-    const urlObj = new URL(url);
-    return ALLOWED_HLS_DOMAINS.some(
-      (domain) => urlObj.hostname === domain || urlObj.hostname.endsWith('.' + domain)
-    );
+    const host = new URL(url).hostname;
+    if (isSuperflixEmbedHost(host)) return true;
+    return EMBEDTV_HLS.some((d) => host === d || host.endsWith(`.${d}`));
   } catch {
     return false;
   }
@@ -109,6 +112,21 @@ export async function GET(request: NextRequest) {
   if (!url) {
     console.log('[HLS Proxy] ERRO: URL não fornecida');
     return NextResponse.json({ error: 'URL é obrigatória' }, { status: 400 });
+  }
+
+  // Bloquear requisições para Cloudflare (Turnstile, RUM, challenges)
+  try {
+    const urlObj = new URL(url);
+    if (urlObj.hostname.includes('cloudflare.com') || 
+        urlObj.hostname.includes('cdn-cgi') ||
+        urlObj.pathname.includes('/cdn-cgi/') ||
+        urlObj.pathname.includes('/challenges/') ||
+        urlObj.pathname.includes('/turnstile/')) {
+      console.log('[HLS Proxy] Bloqueando requisição para Cloudflare:', url);
+      return NextResponse.json({ error: 'Cloudflare requests blocked' }, { status: 403 });
+    }
+  } catch {
+    // URL inválida, continua processamento normal
   }
 
   if (!isAllowedDomain(url)) {

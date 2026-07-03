@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
 
     await query(`
       INSERT INTO system_settings (key, value, description) VALUES
-        ('site_name', 'Superflix', 'Nome do site'),
+        ('site_name', 'OpenStream', 'Nome do site'),
         ('site_description', 'Sua plataforma de streaming favorita', 'Descrição do site'),
         ('maintenance_mode', 'false', 'Modo de manutenção'),
         ('allow_registration', 'true', 'Permitir registro de novos usuários'),
